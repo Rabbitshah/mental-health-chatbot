@@ -1,6 +1,7 @@
 import { useState } from "react";
 import API from "../api";
 import { useNavigate, Link } from "react-router-dom";
+import GoogleLoginButton from "../components/GoogleLoginButton";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -78,6 +79,12 @@ export default function Signup() {
           >
             Sign up
           </button>
+          <div className="flex items-center my-4">
+            <div className="flex-grow h-px bg-gray-300" />
+            <span className="mx-2 text-gray-400 text-xs">or</span>
+            <div className="flex-grow h-px bg-gray-300" />
+          </div>
+          <GoogleLoginButton />
           <div className="text-center text-xs text-gray-500 mb-2">
             Already have an account?{" "}
             <Link to="/login" className="text-blue-600 hover:underline">

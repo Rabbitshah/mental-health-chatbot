@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 
-from database import SessionLocal, engine
-from models import User
-from database import Base
+from backend.database import SessionLocal, engine
+from backend.models import User
+from backend.database import Base
 
 # Initialize router
 router = APIRouter()
