@@ -6,9 +6,9 @@ const GoogleLoginButton = () => {
   const handleSuccess = async (credentialResponse) => {
     try {
       const res = await axios.post("http://localhost:8000/google-login", {
-        token: credentialResponse.credential,
+        credential: credentialResponse.credential,
       });
-
+  
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       window.location.href = "/chat";
@@ -16,7 +16,7 @@ const GoogleLoginButton = () => {
       console.error("Google Login Error:", err);
     }
   };
-
+  
   return (
     <div>
       <GoogleLogin onSuccess={handleSuccess} onError={() => console.error("Google login failed")} />

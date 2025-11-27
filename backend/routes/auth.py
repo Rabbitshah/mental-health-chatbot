@@ -4,12 +4,9 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from backend.database import get_db, engine
-from backend.models import User
-from backend.database import Base
-from backend.jwt_handler import create_access_token, decode_token
-
-import os
+from database import SessionLocal, engine
+from models import User
+from database import Base
 
 router = APIRouter()
 
@@ -30,7 +27,7 @@ class UserCreate(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: str
+    identifier: str  # can be email or username
     password: str
 
 
@@ -81,21 +78,12 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == user.email).first()
+    # Try to find user by email first, then by username
+    existing = db.query(User).filter((User.email == user.identifier) | (User.username == user.identifier)).first()
     if not existing or not pwd_context.verify(user.password, existing.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_access_token({"email": existing.email})
-
-    return {
-        "token": token,
-        "user": {
-            "name": existing.name,
-            "username": existing.username,
-            "email": existing.email,
-        },
-    }
-
+    token = jwt.encode({"email": existing.email}, SECRET_KEY, algorithm="HS256")
+    return {"token": token, "user": {"name": existing.name, "username": existing.username, "email": existing.email}}
 
 @router.put("/profile")
 def update_profile(

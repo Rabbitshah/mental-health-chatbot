@@ -13,7 +13,7 @@ export default function Chatbot() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) navigate("/login");
-    // Get user name from localStorage
+
     const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
@@ -54,18 +54,18 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7fa] flex">
+    <div className="min-h-screen bg-[#18181b] flex font-sans text-gray-100">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r flex flex-col p-6 min-h-screen relative">
+      <aside className="w-64 bg-[#232946] border-r border-[#393e46] flex flex-col p-6 min-h-screen">
         <div className="flex items-center mb-8">
           <span className="font-extrabold text-xl tracking-widest">
             AuraChat
           </span>
         </div>
-        <button className="bg-[#6a8dff] text-white rounded-full px-4 py-2 mb-6 font-semibold flex items-center justify-center">
+        <button className="bg-[#6a8dff] text-white rounded-full px-4 py-2 mb-6 font-medium hover:shadow-md transition">
           + New chat
         </button>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pr-1">
           <div className="mb-4">
             <span className="text-xs text-gray-400 uppercase">
               Your conversations
@@ -75,19 +75,18 @@ export default function Chatbot() {
             <span className="text-xs text-gray-400 uppercase">Last 7 Days</span>
           </div>
         </div>
-        <div className="mt-6">
+        <div className="mt-6 relative">
           <div
-            className="flex items-center gap-2 mt-2 cursor-pointer select-none relative"
+            className="flex items-center gap-2 mt-2 cursor-pointer select-none"
             onClick={() => setMenuOpen((open) => !open)}
           >
-            <span className="inline-block w-8 h-8 bg-gray-300 rounded-full" />
+            <span className="inline-block w-8 h-8 bg-gray-700 rounded-full" />
             <span className="text-sm font-semibold">{userName}</span>
             <svg
               className="w-5 h-5 ml-1"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
             >
               <path
                 strokeLinecap="round"
@@ -97,9 +96,9 @@ export default function Chatbot() {
               />
             </svg>
             {menuOpen && (
-              <div className="absolute right-0 bottom-full mb-2 w-40 bg-white border rounded-lg shadow-lg z-50">
+              <div className="absolute right-0 bottom-full mb-2 w-40 bg-[#232946] border border-[#393e46] rounded-lg shadow-md z-50">
                 <button
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                  className="w-full text-left px-4 py-2 hover:bg-[#393e46] text-sm"
                   onClick={() => {
                     setMenuOpen(false);
                     navigate("/profile");
@@ -108,7 +107,7 @@ export default function Chatbot() {
                   Settings
                 </button>
                 <button
-                  className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600"
+                  className="w-full text-left px-4 py-2 hover:bg-[#393e46] text-sm text-red-400"
                   onClick={handleLogout}
                 >
                   Logout
@@ -118,22 +117,21 @@ export default function Chatbot() {
           </div>
         </div>
       </aside>
+
       {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center px-8 py-10">
+      <main className="flex-1 flex flex-col items-center px-6 py-10">
         <div className="w-full max-w-4xl">
           <div className="flex flex-col items-center mb-8">
-            <span className="bg-[#f7f7fa] px-6 py-2 rounded-full border text-lg font-semibold tracking-widest mb-2">
+            <span className="bg-[#232946] px-6 py-2 rounded-full border border-[#393e46] text-lg font-semibold tracking-widest mb-2">
               AuraChat
             </span>
-            <h1 className="text-3xl font-bold mb-2">
+            <h1 className="text-3xl font-bold mb-1 text-center">
               Good day! How may I assist you today?
             </h1>
           </div>
-          {/* Chat Section */}
-          <div
-            className="bg-white rounded-xl shadow p-6 mb-6 max-h-[420px] overflow-y-auto"
-            style={{ minHeight: 320 }}
-          >
+
+          {/* Chat Box */}
+          <div className="bg-[#232946] rounded-xl shadow p-6 mb-6 max-h-[420px] overflow-y-auto space-y-4 border border-[#393e46]">
             {messages.length === 0 ? (
               <div className="text-center text-gray-400">
                 Start the conversation...
@@ -142,15 +140,15 @@ export default function Chatbot() {
               messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`flex mb-4 ${
+                  className={`flex ${
                     msg.type === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
                   <div
-                    className={`max-w-[75%] px-4 py-3 rounded-2xl text-base shadow-sm ${
+                    className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-wrap ${
                       msg.type === "user"
-                        ? "bg-[#e0aaff] text-right"
-                        : "bg-[#f7f7fa] border text-left"
+                        ? "bg-[#6a8dff] text-gray-100 text-right"
+                        : "bg-[#393e46] border border-[#232946] text-left"
                     }`}
                   >
                     {msg.text}
@@ -160,13 +158,14 @@ export default function Chatbot() {
             )}
             <div ref={chatEndRef} />
           </div>
-          {/* Chat Input */}
-          <div className="flex items-center bg-white rounded-full shadow px-4 py-2">
+
+          {/* Input */}
+          <div className="flex items-center bg-[#232946] rounded-full shadow px-4 py-2 border border-[#393e46]">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 border-none outline-none bg-transparent px-2 py-2 text-base"
-              placeholder="What's in your mind?..."
+              className="flex-1 border-none outline-none bg-transparent px-2 py-2 text-base text-gray-100 placeholder-gray-400"
+              placeholder="What's on your mind?..."
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendMessage();
               }}
