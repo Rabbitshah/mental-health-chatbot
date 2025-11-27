@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import GoogleLoginButton from "../components/GoogleLoginButton";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showSignupPrompt, setShowSignupPrompt] = useState(false);
@@ -13,7 +13,7 @@ export default function Login() {
   const handleLogin = async () => {
     setLoading(true);
     try {
-      const res = await API.post("/login", { email, password });
+      const res = await API.post("/login", { identifier, password });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       navigate("/chat");
@@ -25,14 +25,14 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-[#6a8dff] via-[#e0aaff] to-[#ffb6b9]">
-      <div className="flex w-full max-w-5xl bg-white/0 rounded-lg shadow-lg overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-tr from-[#232946] via-[#393e46] to-[#18181b]">
+      <div className="flex w-full max-w-5xl bg-[#232946]/80 rounded-lg shadow-lg overflow-hidden">
         {/* Left: Branding and Info */}
-        <div className="hidden md:flex flex-col w-1/2 p-10 text-white bg-gradient-to-br from-[#3a3af7] via-[#a259ff] to-[#ff6a88]">
+        <div className="hidden md:flex flex-col w-1/2 p-10 text-white bg-gradient-to-br from-[#18181b] via-[#232946] to-[#393e46]">
           <h1 className="text-3xl font-bold mb-6 tracking-wide">AuraChat</h1>
         </div>
         {/* Right: Login Form or Signup Prompt */}
-        <div className="w-full md:w-1/2 bg-white p-10 flex flex-col justify-center">
+        <div className="w-full md:w-1/2 bg-[#232946] p-10 flex flex-col justify-center">
           {showSignupPrompt ? (
             <div className="flex flex-col items-center justify-center h-full">
               <h2 className="text-2xl font-bold mb-4 text-gray-900">
@@ -48,7 +48,7 @@ export default function Login() {
                 Go to Signup
               </button>
               <button
-                className="text-blue-600 hover:underline text-sm"
+                className="text-[#e4acfc] hover:underline text-sm"
                 onClick={() => setShowSignupPrompt(false)}
               >
                 Back to Login
@@ -56,25 +56,25 @@ export default function Login() {
             </div>
           ) : (
             <>
-              <h2 className="text-2xl font-bold mb-2 text-gray-900">Sign in</h2>
-              <p className="mb-6 text-gray-600 text-sm">
+              <h2 className="text-2xl font-bold mb-2 text-gray-100">Sign in</h2>
+              <p className="mb-6 text-gray-300 text-sm">
                 Welcome back! Please sign in to your account
               </p>
-              <label className="block mb-2 text-sm font-medium text-gray-700">
-                Email Address*
+              <label className="block mb-2 text-sm font-medium text-gray-200">
+                Username or Email*
               </label>
               <input
-                className="w-full mb-4 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-                placeholder="ex. email@domain.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                className="w-full mb-4 p-2 border rounded bg-[#232946] text-white focus:outline-none focus:ring-2 focus:ring-[#e4acfc]"
+                placeholder="Enter your username or email"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
               />
-              <label className="block mb-2 text-sm font-medium text-gray-700">
+              <label className="block mb-2 text-sm font-medium text-gray-200">
                 Password*
               </label>
               <input
                 type="password"
-                className="w-full mb-6 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full mb-6 p-2 border rounded bg-[#232946] text-white focus:outline-none focus:ring-2 focus:ring-[#e4acfc]"
                 placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -91,11 +91,13 @@ export default function Login() {
                 <span className="mx-2 text-gray-400 text-xs">or</span>
                 <div className="flex-grow h-px bg-gray-300" />
               </div>
-              <GoogleLoginButton />
+              <div className="mb-4">
+                <GoogleLoginButton />
+              </div>
               <div className="text-center text-xs text-gray-500 mb-2">
                 Don't have an account?{" "}
                 <button
-                  className="text-blue-600 font-medium hover:font-bold hover:text-[#6a8dff] hover:underline cursor-pointer transition-all duration-200"
+                  className="text-[#e4acfc] font-medium hover:font-bold hover:text-[#e4acfc] hover:underline cursor-pointer transition-all duration-200"
                   onClick={() => navigate("/signup")}
                 >
                   Sign up

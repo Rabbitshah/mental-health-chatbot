@@ -4,10 +4,9 @@ from google.oauth2 import id_token
 from google.auth.transport import requests
 from sqlalchemy.orm import Session
 
-from .. import models
-from ..database import get_db
-from ..jwt_handler import create_access_token
-
+from models import User
+from database import get_db
+from jwt_handler import create_access_token
 
 router = APIRouter()
 
@@ -17,7 +16,7 @@ GOOGLE_CLIENT_ID = "175457284636-oct6jlqgg1burgo2p04annu9hnj1bg6g.apps.googleuse
 async def google_login(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
-        token = body.get("token")
+        token = body.get("credential")  # ✅ Correct key
 
         if not token:
             raise HTTPException(status_code=400, detail="Token missing")
@@ -28,10 +27,17 @@ async def google_login(request: Request, db: Session = Depends(get_db)):
         name = idinfo.get("name")
         picture = idinfo.get("picture")
 
-        user = db.query(models.User).filter(models.User.email == email).first()
+        user = db.query(User).filter(User.email == email).first()
 
         if not user:
-            user = models.User(name=name, email=email, picture=picture)
+            # Auto-generate a unique username from email
+            base_username = email.split("@")[0]
+            username = base_username
+            counter = 1
+            while db.query(User).filter(User.username == username).first():
+                username = f"{base_username}{counter}"
+                counter += 1
+            user = User(name=name, email=email, picture=picture, username=username)
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -51,5 +57,7 @@ async def google_login(request: Request, db: Session = Depends(get_db)):
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid token")
-    except Exception:
+    except Exception as e:
+        print("Google Login Error:", str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
+

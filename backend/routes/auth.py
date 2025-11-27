@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
 
-from backend.database import SessionLocal, engine
-from backend.models import User
-from backend.database import Base
+from database import SessionLocal, engine
+from models import User
+from database import Base
 
 # Initialize router
 router = APIRouter()
@@ -31,7 +31,7 @@ class UserCreate(BaseModel):
     username: str
 
 class UserLogin(BaseModel):
-    email: str
+    identifier: str  # can be email or username
     password: str
 
 class UserUpdate(BaseModel):
@@ -66,11 +66,11 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == user.email).first()
+    # Try to find user by email first, then by username
+    existing = db.query(User).filter((User.email == user.identifier) | (User.username == user.identifier)).first()
     if not existing or not pwd_context.verify(user.password, existing.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    token = jwt.encode({"email": user.email}, SECRET_KEY, algorithm="HS256")
+    token = jwt.encode({"email": existing.email}, SECRET_KEY, algorithm="HS256")
     return {"token": token, "user": {"name": existing.name, "username": existing.username, "email": existing.email}}
 
 @router.put("/profile")

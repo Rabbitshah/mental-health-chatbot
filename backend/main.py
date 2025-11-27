@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routes.auth import router as auth_router
-from backend.routes.chat import router as chat_router  
-from backend.routes import google_auth
+from routes.auth import router as auth_router
+from routes.chat import router as chat_router  
+from routes import google_auth
 
 app = FastAPI()
 
@@ -12,6 +12,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Cross-Origin-Opener-Policy"],
 )
 
 app.include_router(auth_router)  
