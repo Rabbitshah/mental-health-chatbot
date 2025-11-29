@@ -12,52 +12,59 @@ router = APIRouter()
 
 GOOGLE_CLIENT_ID = "175457284636-oct6jlqgg1burgo2p04annu9hnj1bg6g.apps.googleusercontent.com"
 
+
 @router.post("/google-login")
 async def google_login(request: Request, db: Session = Depends(get_db)):
+    body = await request.json()
+    token = body.get("token")
+
+    if not token:
+        raise HTTPException(status_code=400, detail="Token not provided")
+
     try:
-        body = await request.json()
-        token = body.get("credential")  # ✅ Correct key
+        # Verify Google ID token
+        idinfo = id_token.verify_oauth2_token(
+            token,
+            requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
 
-        if not token:
-            raise HTTPException(status_code=400, detail="Token missing")
-
-        idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
-
-        email = idinfo["email"]
+        google_user_id = idinfo["sub"]
+        email = idinfo.get("email")
         name = idinfo.get("name")
         picture = idinfo.get("picture")
 
-        user = db.query(User).filter(User.email == email).first()
-
+        # Find or create user
+        user = db.query(User).filter(User.google_id == google_user_id).first()
         if not user:
-            # Auto-generate a unique username from email
-            base_username = email.split("@")[0]
-            username = base_username
-            counter = 1
-            while db.query(User).filter(User.username == username).first():
-                username = f"{base_username}{counter}"
-                counter += 1
-            user = User(name=name, email=email, picture=picture, username=username)
+            username = email.split("@")[0] if email else None
+            user = User(
+                email=email,
+                name=name,
+                username=username,
+                google_id=google_user_id,
+                picture=picture,
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
 
-        token_data = {"sub": str(user.id), "email": user.email}
-        jwt_token = create_access_token(token_data)
+        jwt_token = create_access_token({"email": user.email})
 
-        return JSONResponse(content={
-            "user": {
-                "id": user.id,
-                "name": user.name,
-                "email": user.email,
-                "picture": user.picture,
-            },
-            "token": jwt_token,
-        })
+        return JSONResponse(
+            content={
+                "user": {
+                    "id": user.id,
+                    "name": user.name,
+                    "username": user.username,
+                    "email": user.email,
+                    "picture": user.picture,
+                },
+                "token": jwt_token,
+            }
+        )
 
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid token")
-    except Exception as e:
-        print("Google Login Error:", str(e))
+    except Exception:
         raise HTTPException(status_code=500, detail="Internal server error")
-
