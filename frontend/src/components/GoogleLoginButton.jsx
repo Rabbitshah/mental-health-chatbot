@@ -1,11 +1,11 @@
 import React from "react";
 import { GoogleLogin } from "@react-oauth/google";
-import axios from "axios";
+import API from "../api";
 
 const GoogleLoginButton = () => {
   const handleSuccess = async (credentialResponse) => {
     try {
-      const res = await axios.post("http://localhost:8000/google-login", {
+      const res = await API.post("/google-login", {
         credential: credentialResponse.credential,
       });
   
