@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from "react";
 import API from "../api";
 import { useNavigate } from "react-router-dom";
@@ -21,7 +22,7 @@ export default function Chatbot() {
         if (userObj.name) setUserName(userObj.name);
       } catch {}
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,15 +55,15 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="min-h-screen bg-[#18181b] flex font-sans text-gray-100">
+    <div className="min-h-screen bg-gray-900 flex font-sans text-gray-200">
       {/* Sidebar */}
-      <aside className="w-64 bg-[#232946] border-r border-[#393e46] flex flex-col p-6 min-h-screen">
+      <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col p-6 min-h-screen">
         <div className="flex items-center mb-8">
-          <span className="font-extrabold text-xl tracking-widest">
+          <span className="font-extrabold text-2xl tracking-widest text-indigo-500">
             AuraChat
           </span>
         </div>
-        <button className="bg-[#6a8dff] text-white rounded-full px-4 py-2 mb-6 font-medium hover:shadow-md transition">
+        <button className="bg-indigo-600 text-white rounded-full px-4 py-2 mb-6 font-medium hover:bg-indigo-700 transition">
           + New chat
         </button>
         <div className="flex-1 overflow-y-auto pr-1">
@@ -81,9 +82,9 @@ export default function Chatbot() {
             onClick={() => setMenuOpen((open) => !open)}
           >
             <span className="inline-block w-8 h-8 bg-gray-700 rounded-full" />
-            <span className="text-sm font-semibold">{userName}</span>
+            <span className="text-sm font-semibold text-gray-200">{userName}</span>
             <svg
-              className="w-5 h-5 ml-1"
+              className="w-5 h-5 ml-1 text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -96,9 +97,9 @@ export default function Chatbot() {
               />
             </svg>
             {menuOpen && (
-              <div className="absolute right-0 bottom-full mb-2 w-40 bg-[#232946] border border-[#393e46] rounded-lg shadow-md z-50">
+              <div className="absolute right-0 bottom-full mb-2 w-40 bg-gray-800 border border-gray-700 rounded-lg shadow-md z-50">
                 <button
-                  className="w-full text-left px-4 py-2 hover:bg-[#393e46] text-sm"
+                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-sm text-gray-200"
                   onClick={() => {
                     setMenuOpen(false);
                     navigate("/profile");
@@ -107,7 +108,7 @@ export default function Chatbot() {
                   Settings
                 </button>
                 <button
-                  className="w-full text-left px-4 py-2 hover:bg-[#393e46] text-sm text-red-400"
+                  className="w-full text-left px-4 py-2 hover:bg-gray-700 text-sm text-red-400"
                   onClick={handleLogout}
                 >
                   Logout
@@ -122,16 +123,16 @@ export default function Chatbot() {
       <main className="flex-1 flex flex-col items-center px-6 py-10">
         <div className="w-full max-w-4xl">
           <div className="flex flex-col items-center mb-8">
-            <span className="bg-[#232946] px-6 py-2 rounded-full border border-[#393e46] text-lg font-semibold tracking-widest mb-2">
+            <span className="bg-gray-800 px-6 py-2 rounded-full border border-gray-700 text-lg font-semibold tracking-widest text-indigo-500 mb-2">
               AuraChat
             </span>
-            <h1 className="text-3xl font-bold mb-1 text-center">
+            <h1 className="text-3xl font-bold mb-1 text-center text-white">
               Good day! How may I assist you today?
             </h1>
           </div>
 
           {/* Chat Box */}
-          <div className="bg-[#232946] rounded-xl shadow p-6 mb-6 max-h-[420px] overflow-y-auto space-y-4 border border-[#393e46]">
+          <div className="bg-gray-800 rounded-xl shadow p-6 mb-6 h-[420px] overflow-y-auto space-y-4 border border-gray-700">
             {messages.length === 0 ? (
               <div className="text-center text-gray-400">
                 Start the conversation...
@@ -147,8 +148,8 @@ export default function Chatbot() {
                   <div
                     className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm whitespace-pre-wrap ${
                       msg.type === "user"
-                        ? "bg-[#6a8dff] text-gray-100 text-right"
-                        : "bg-[#393e46] border border-[#232946] text-left"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-700 text-gray-200"
                     }`}
                   >
                     {msg.text}
@@ -160,11 +161,11 @@ export default function Chatbot() {
           </div>
 
           {/* Input */}
-          <div className="flex items-center bg-[#232946] rounded-full shadow px-4 py-2 border border-[#393e46]">
+          <div className="flex items-center bg-gray-800 rounded-full shadow px-4 py-2 border border-gray-700">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              className="flex-1 border-none outline-none bg-transparent px-2 py-2 text-base text-gray-100 placeholder-gray-400"
+              className="flex-1 border-none outline-none bg-transparent px-2 py-2 text-base text-gray-200 placeholder-gray-400"
               placeholder="What's on your mind?..."
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendMessage();
@@ -172,7 +173,7 @@ export default function Chatbot() {
             />
             <button
               onClick={sendMessage}
-              className="ml-2 bg-[#6a8dff] hover:bg-[#4e6edb] text-white rounded-full p-2 transition"
+              className="ml-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-2 transition"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
