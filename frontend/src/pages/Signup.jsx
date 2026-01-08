@@ -19,7 +19,7 @@ export default function Signup() {
       const res = await API.post("/login", { identifier: email, password });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
-      navigate("/chat");
+      navigate("/dashboard");
     } catch (err) {
       alert(err.response?.data?.detail || "Signup failed");
     } finally {

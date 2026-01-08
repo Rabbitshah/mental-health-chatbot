@@ -11,7 +11,7 @@ const GoogleLoginButton = () => {
   
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
-      window.location.href = "/chat";
+      window.location.href = "/dashboard";
     } catch (err) {
       console.error("Google Login Error:", err);
     }

@@ -16,7 +16,7 @@ export default function Login() {
       const res = await API.post("/login", { identifier, password });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
-      navigate("/chat");
+      navigate("/dashboard");
     } catch (err) {
       alert(err.response?.data?.detail || "Login failed");
     } finally {
