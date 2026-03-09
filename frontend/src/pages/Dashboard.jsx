@@ -1,605 +1,559 @@
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  MessageCircle,
+  Settings as SettingsIcon,
+  Moon,
+  CheckCircle,
+  TrendingUp,
+  Flame,
+  Book,
+  ArrowUp,
+  MoreVertical,
+  ChevronRight,
+  Eye,
+} from "lucide-react";
+import { motion } from "motion/react";
+import Sidebar from "../components/Sidebar";
 
 export default function Dashboard() {
-  const [userName, setUserName] = useState("Alex");
-  const [timeOfDay, setTimeOfDay] = useState("evening");
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) navigate("/login");
+  const conversations = [
+    {
+      title: "Managing Work Stress",
+      preview: "We discussed breathing techniques for anxiety...",
+      tag: "Anxiety",
+      time: "2 hours ago",
+      icon: SettingsIcon,
+      color: "#4A90D9",
+    },
+    {
+      title: "Sleep Improvement Plan",
+      preview: "Review of last night's routine and sleep quality.",
+      tag: "Health",
+      time: "Yesterday",
+      icon: Moon,
+      color: "#4A90D9",
+    },
+    {
+      title: "Weekly Goal Setting",
+      preview: "Setting achievable targets for the upcoming week.",
+      tag: "Goals",
+      time: "3 days ago",
+      icon: CheckCircle,
+      color: "#4A90D9",
+    },
+  ];
 
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        if (user.name) {
-          const nameParts = user.name.split(" ");
-          setUserName(nameParts[0] || "User");
-        }
-      } catch {}
-    }
+  const moodData = [
+    { day: "M", value: 60, color: "#4A90D9" },
+    { day: "T", value: 80, color: "#4A90D9" },
+    { day: "W", value: 45, color: "#E07C6B" },
+    { day: "T", value: 30, color: "#E07C6B" },
+    { day: "F", value: 70, color: "#4A90D9" },
+    { day: "S", value: 90, color: "#7EC8A4" },
+    { day: "S", value: 65, color: "#4A90D9" },
+  ];
 
-    // Determine time of day
-    const hour = new Date().getHours();
-    if (hour < 12) setTimeOfDay("morning");
-    else if (hour < 17) setTimeOfDay("afternoon");
-    else setTimeOfDay("evening");
-  }, [navigate]);
-
-  const getUserInitials = () => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        const name = user.name || "";
-        const parts = name.split(" ");
-        return parts.length > 1
-          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-          : name.charAt(0).toUpperCase();
-      } catch {}
-    }
-    return "U";
-  };
-
-  const handleSignOut = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
-  };
+  const stats = [
+    { number: "12", label: "DAY STREAK", icon: Flame, color: "#F5A962" },
+    {
+      number: "4",
+      label: "SESSIONS THIS WEEK",
+      icon: MessageCircle,
+      color: "#4A90D9",
+    },
+    {
+      number: "85%",
+      label: "MOOD SCORE",
+      icon: ArrowUp,
+      color: "#7EC8A4",
+      showProgress: true,
+    },
+    { number: "5", label: "JOURNALS", icon: Book, color: "#4A90D9" },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-200 flex">
-      {/* Left Sidebar */}
-      <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col min-h-screen">
-        {/* Branding */}
-        <div className="p-6 border-b border-gray-700">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
-              <span className="text-white font-bold text-lg">M</span>
-            </div>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar />
+      <main
+        className="flex-1 overflow-y-auto p-10"
+        style={{ background: "#F7FAFD" }}
+      >
+        <div className="max-w-[1200px] mx-auto space-y-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="flex items-start justify-between"
+          >
             <div>
-              <span className="font-bold text-xl text-white">MindfulBot</span>
-              <p className="text-sm text-gray-400">Your Wellness Companion</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4">
-          <div className="space-y-1">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-600 text-white transition"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              <div className="flex items-center gap-3 mb-2">
+                <h1
+                  className="text-4xl"
+                  style={{ color: "var(--aura-text-primary)" }}
+                >
+                  Good evening, Alex.
+                </h1>
+                <motion.span
+                  className="text-3xl"
+                  animate={{ rotate: [0, 15, 0] }}
+                  transition={{ duration: 1, repeat: Infinity, repeatDelay: 3 }}
+                >
+                  {"\uD83D\uDC4B"}
+                </motion.span>
+              </div>
+              <p
+                className="text-base"
+                style={{ color: "var(--aura-text-secondary)" }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                />
-              </svg>
-              <span className="font-medium">Home</span>
-            </button>
-            <button
-              onClick={() => navigate("/chat")}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-              <span className="font-medium">Chat History</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition">
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                />
-              </svg>
-              <span className="font-medium">Mood Journal</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition">
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-              <span className="font-medium">Resources</span>
-            </button>
-            <button
-              onClick={() => navigate("/profile")}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-              <span className="font-medium">Settings</span>
-            </button>
-          </div>
-        </nav>
-
-        {/* Daily Tip */}
-        <div className="p-4 border-t border-gray-700">
-          <div className="bg-gray-700 rounded-lg p-4 mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <svg
-                className="w-5 h-5 text-yellow-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-              <span className="text-sm font-semibold text-white">Daily Tip</span>
-            </div>
-            <p className="text-sm text-gray-300">
-              "Take a deep breath. Focus on the present moment, one step at a time."
-            </p>
-          </div>
-          <button className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg font-medium transition flex items-center justify-center gap-2">
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.21 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-            Get Immediate Help
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8">
-          {/* Top Header */}
-          <div className="flex items-start justify-between mb-8">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">
-                Good {timeOfDay}, {userName}.
-              </h1>
-              <p className="text-gray-400">
                 Ready to check in? Remember, one step at a time.
               </p>
             </div>
-            <div className="flex items-center gap-4">
-              <button className="text-gray-400 hover:text-gray-300 transition">
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                  />
-                </svg>
+
+            <div className="flex items-center gap-3">
+              <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+                <Eye
+                  size={20}
+                  style={{ color: "var(--aura-text-secondary)" }}
+                />
               </button>
-              <div className="w-10 h-10 rounded-full bg-orange-400 border-2 border-white flex items-center justify-center">
-                <span className="text-white font-bold text-sm">
-                  {getUserInitials()}
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center text-sm text-white"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #F5A962 0%, #E8834A 100%)",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+                  border: "2px solid white",
+                }}
+              >
+                AD
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="bg-white p-8 relative overflow-hidden"
+            style={{
+              borderRadius: "20px",
+              boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+            }}
+          >
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-3">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: "#4A90D9" }}
+                ></div>
+                <span
+                  className="text-xs uppercase tracking-wider"
+                  style={{ color: "#4A90D9", letterSpacing: "0.1em" }}
+                >
+                  CURRENT STATUS
                 </span>
               </div>
-            </div>
-          </div>
 
-          {/* Current Status Card */}
-          <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-              <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
-                CURRENT STATUS
-              </span>
-            </div>
-            <h2 className="text-2xl font-bold text-white mb-2">
-              Start a New Session
-            </h2>
-            <p className="text-gray-400 mb-6">
-              Continue where you left off or start a fresh topic today. I'm here to listen.
-            </p>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate("/chat")}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition flex items-center gap-2"
+              <h2
+                className="text-2xl mb-2"
+                style={{ color: "var(--aura-text-primary)" }}
               >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                Start a New Session
+              </h2>
+              <p
+                className="text-base mb-6"
+                style={{ color: "var(--aura-text-secondary)" }}
+              >
+                Continue where you left off or start a fresh topic today.
+                I&apos;m here to listen.
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => navigate("/chat")}
+                  className="flex items-center gap-2 px-6 text-white hover:opacity-90 transition-all"
+                  style={{
+                    background: "#4A90D9",
+                    borderRadius: "12px",
+                    height: "48px",
+                  }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  <MessageCircle size={18} />
+                  <span>Start Chatting</span>
+                </button>
+
+                <button
+                  onClick={() => navigate("/chat")}
+                  className="flex items-center gap-2 px-6 hover:bg-opacity-80 transition-all"
+                  style={{
+                    background: "rgba(74, 144, 217, 0.08)",
+                    color: "#4A90D9",
+                    border: "1px solid rgba(74, 144, 217, 0.3)",
+                    borderRadius: "12px",
+                    height: "48px",
+                  }}
+                >
+                  <span>Resume: Work Anxiety</span>
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="absolute -right-8 top-1/2 -translate-y-1/2 w-64 h-64 opacity-20"
+              style={{
+                background: "linear-gradient(135deg, #4A90D9 0%, #7EC8A4 100%)",
+                borderRadius: "50%",
+                filter: "blur(40px)",
+              }}
+            />
+            <div
+              className="absolute right-12 top-1/2 -translate-y-1/2 w-32 h-32 opacity-30"
+              style={{
+                background: "linear-gradient(135deg, #7EC8A4 0%, #4A90D9 100%)",
+                borderRadius: "50%",
+                filter: "blur(20px)",
+              }}
+            />
+          </motion.div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="lg:col-span-2 bg-white p-7"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3
+                  className="text-xl"
+                  style={{ color: "var(--aura-text-primary)" }}
+                >
+                  Recent Conversations
+                </h3>
+                <button className="p-1 hover:bg-gray-100 rounded-lg transition-all">
+                  <MoreVertical
+                    size={20}
+                    style={{ color: "var(--aura-text-secondary)" }}
                   />
-                </svg>
-                Start Chatting
-              </button>
-              <button className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-6 py-3 rounded-lg font-medium transition">
-                Resume: Work Anxiety
-              </button>
-            </div>
-          </div>
-
-          {/* Main Grid */}
-          <div className="grid grid-cols-3 gap-6 mb-6">
-            {/* Recent Conversations - Takes 2 columns */}
-            <div className="col-span-2">
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-white">
-                    Recent Conversations
-                  </h3>
-                  <button className="text-gray-400 hover:text-gray-300">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {/* Conversation Card 1 */}
-                  <div className="bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition cursor-pointer flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-lg bg-gray-600 flex items-center justify-center">
-                        <svg
-                          className="w-6 h-6 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-white mb-1">
-                          Managing Work Stress
-                        </h4>
-                        <p className="text-sm text-gray-400 mb-2">
-                          We discussed breathing techniques for anxiety...
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-gray-500">2 hours ago</span>
-                          <span className="px-2 py-1 bg-gray-600 text-gray-300 text-xs rounded-full">
-                            Anxiety
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </div>
-
-                  {/* Conversation Card 2 */}
-                  <div className="bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition cursor-pointer flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-lg bg-gray-600 flex items-center justify-center">
-                        <svg
-                          className="w-6 h-6 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-white mb-1">
-                          Sleep Improvement Plan
-                        </h4>
-                        <p className="text-sm text-gray-400 mb-2">
-                          Review of last night's routine and sleep quality.
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-gray-500">Yesterday</span>
-                          <span className="px-2 py-1 bg-gray-600 text-gray-300 text-xs rounded-full">
-                            Health
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </div>
-
-                  {/* Conversation Card 3 */}
-                  <div className="bg-gray-700 rounded-lg p-4 hover:bg-gray-600 transition cursor-pointer flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-lg bg-gray-600 flex items-center justify-center">
-                        <svg
-                          className="w-6 h-6 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-white mb-1">
-                          Weekly Goal Setting
-                        </h4>
-                        <p className="text-sm text-gray-400 mb-2">
-                          Setting achievable targets for the upcoming week.
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-gray-500">3 days ago</span>
-                          <span className="px-2 py-1 bg-gray-600 text-gray-300 text-xs rounded-full">
-                            Goals
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <svg
-                      className="w-5 h-5 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </div>
-                </div>
+                </button>
               </div>
-            </div>
 
-            {/* Right Column - Mood Trends & Recommended */}
-            <div className="space-y-6">
-              {/* Mood Trends */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-white">Mood Trends</h3>
-                  <button className="text-blue-400 hover:text-blue-300 text-sm font-medium">
-                    View All
-                  </button>
-                </div>
-                {/* Simple Bar Chart */}
-                <div className="h-32 flex items-end justify-between gap-1 mb-4">
-                  <div className="flex-1 bg-blue-500 rounded-t" style={{ height: "60%" }}></div>
-                  <div className="flex-1 bg-blue-500 rounded-t" style={{ height: "80%" }}></div>
-                  <div className="flex-1 bg-blue-500 rounded-t" style={{ height: "45%" }}></div>
-                  <div className="flex-1 bg-red-500 rounded-t" style={{ height: "30%" }}></div>
-                  <div className="flex-1 bg-blue-500 rounded-t" style={{ height: "70%" }}></div>
-                  <div className="flex-1 bg-green-500 rounded-t" style={{ height: "90%" }}></div>
-                  <div className="flex-1 bg-blue-500 rounded-t" style={{ height: "65%" }}></div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5 text-green-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <div className="space-y-3">
+                {conversations.map((conv, index) => (
+                  <motion.button
+                    key={conv.title}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.3 + index * 0.1 }}
+                    className="w-full flex items-center gap-4 p-4 hover:-translate-y-0.5 transition-all text-left"
+                    style={{
+                      border: "1px solid #EEF2F7",
+                      borderRadius: "12px",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 16px rgba(44, 95, 138, 0.10)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                    onClick={() => navigate("/chat")}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    />
-                  </svg>
-                  <div>
-                    <div className="text-sm text-gray-400">Weekly Average</div>
-                    <div className="text-white font-semibold">Generally Positive</div>
-                  </div>
-                </div>
-              </div>
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ background: "rgba(74, 144, 217, 0.08)" }}
+                    >
+                      <conv.icon size={22} style={{ color: conv.color }} />
+                    </div>
 
-              {/* Recommended */}
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-white">Recommended</h3>
-                  <button className="text-blue-400 hover:text-blue-300 text-sm font-medium">
-                    Browse All
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {/* Meditation Card */}
-                  <div className="bg-gray-700 rounded-lg overflow-hidden">
-                    <div className="h-32 bg-gradient-to-br from-blue-600 to-blue-800 relative">
-                      <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-                      <div className="absolute top-3 left-3">
-                        <span className="px-2 py-1 bg-blue-500 text-white text-xs font-semibold rounded">
-                          MEDITATION
+                    <div className="flex-1 min-w-0">
+                      <h4
+                        className="text-base mb-1"
+                        style={{ color: "var(--aura-text-primary)" }}
+                      >
+                        {conv.title}
+                      </h4>
+                      <p
+                        className="text-sm mb-2 truncate"
+                        style={{ color: "var(--aura-text-secondary)" }}
+                      >
+                        {conv.preview}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-xs px-2 py-1"
+                          style={{
+                            background: "rgba(74, 144, 217, 0.1)",
+                            color: "#4A90D9",
+                            borderRadius: "8px",
+                          }}
+                        >
+                          {conv.tag}
+                        </span>
+                        <span className="text-xs" style={{ color: "#9BAABB" }}>
+                          {conv.time}
                         </span>
                       </div>
                     </div>
-                    <div className="p-4">
-                      <h4 className="font-semibold text-white mb-1">
+
+                    <ChevronRight size={20} style={{ color: "#C0CDD8" }} />
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+
+            <div className="space-y-6">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.25 }}
+                className="bg-white p-6"
+                style={{
+                  borderRadius: "20px",
+                  boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+                }}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <h3
+                    className="text-lg"
+                    style={{ color: "var(--aura-text-primary)" }}
+                  >
+                    Mood Trends
+                  </h3>
+                  <button
+                    className="text-sm hover:underline"
+                    style={{ color: "#4A90D9" }}
+                  >
+                    View All
+                  </button>
+                </div>
+
+                <div className="mb-5">
+                  <div className="flex items-end justify-between gap-2 h-32">
+                    {moodData.map((bar, index) => (
+                      <div
+                        key={`${bar.day}-${index}`}
+                        className="flex-1 flex flex-col items-center gap-2"
+                      >
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: `${bar.value}%` }}
+                          transition={{
+                            duration: 0.6,
+                            delay: 0.4 + index * 0.05,
+                          }}
+                          className="w-full rounded-t-lg"
+                          style={{ background: bar.color }}
+                        />
+                        <span className="text-xs" style={{ color: "#9BAABB" }}>
+                          {bar.day}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={18} style={{ color: "#7EC8A4" }} />
+                  <span
+                    className="text-sm"
+                    style={{ color: "var(--aura-text-secondary)" }}
+                  >
+                    Weekly Average:
+                  </span>
+                  <span
+                    className="text-sm"
+                    style={{ color: "var(--aura-text-primary)" }}
+                  >
+                    Generally Positive
+                  </span>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.3 }}
+                className="bg-white p-6"
+                style={{
+                  borderRadius: "20px",
+                  boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+                }}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <h3
+                    className="text-lg"
+                    style={{ color: "var(--aura-text-primary)" }}
+                  >
+                    Recommended
+                  </h3>
+                  <button
+                    className="text-sm hover:underline"
+                    style={{ color: "#4A90D9" }}
+                  >
+                    Browse All
+                  </button>
+                </div>
+
+                <div
+                  className="mb-4 relative overflow-hidden"
+                  style={{ borderRadius: "12px", height: "128px" }}
+                >
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #4A90D9 0%, #2C5F8A 100%)",
+                    }}
+                  />
+                  <div className="relative p-4 h-full flex flex-col justify-between">
+                    <span
+                      className="text-xs px-3 py-1 inline-block w-fit"
+                      style={{
+                        background: "rgba(255, 255, 255, 0.25)",
+                        color: "white",
+                        borderRadius: "8px",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      MEDITATION
+                    </span>
+                    <div>
+                      <h4 className="text-base text-white mb-1">
                         5-Minute Breathing Reset
                       </h4>
-                      <p className="text-sm text-gray-400">
-                        A quick guided session to help you center yourself during a busy day.
+                      <p
+                        className="text-sm"
+                        style={{ color: "rgba(255, 255, 255, 0.8)" }}
+                      >
+                        Quick guided meditation for stress relief
                       </p>
                     </div>
                   </div>
+                </div>
 
-                  {/* Understanding Anxiety Card */}
-                  <div className="bg-gray-700 rounded-lg p-4 flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-gray-600 flex items-center justify-center flex-shrink-0">
-                      <svg
-                        className="w-6 h-6 text-gray-400"
+                <button className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-all text-left">
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(74, 144, 217, 0.08)" }}
+                  >
+                    <Book size={20} style={{ color: "#4A90D9" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4
+                      className="text-sm mb-0.5"
+                      style={{ color: "var(--aura-text-primary)" }}
+                    >
+                      Understanding Anxiety
+                    </h4>
+                    <p
+                      className="text-xs"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      3 min read
+                    </p>
+                  </div>
+                </button>
+              </motion.div>
+            </div>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.35 }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+          >
+            {stats.map((stat) => (
+              <div
+                key={stat.label}
+                className="bg-white p-6 flex flex-col items-center text-center relative"
+                style={{
+                  borderRadius: "20px",
+                  boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+                }}
+              >
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+                  style={{
+                    background: `${stat.color}15`,
+                  }}
+                >
+                  <stat.icon size={24} style={{ color: stat.color }} />
+                </div>
+
+                {stat.showProgress ? (
+                  <div className="relative w-24 h-24 flex items-center justify-center mb-2">
+                    <svg
+                      width="96"
+                      height="96"
+                      viewBox="0 0 96 96"
+                      className="transform -rotate-90 absolute inset-0"
+                    >
+                      <circle
+                        cx="48"
+                        cy="48"
+                        r="42"
                         fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-white mb-1">
-                        Understanding Anxiety
-                      </h4>
-                      <p className="text-sm text-gray-400">3 min read</p>
+                        stroke="#EEF2F7"
+                        strokeWidth="6"
+                      />
+                      <motion.circle
+                        cx="48"
+                        cy="48"
+                        r="42"
+                        fill="none"
+                        stroke="#7EC8A4"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 42}`}
+                        initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
+                        animate={{
+                          strokeDashoffset: 2 * Math.PI * 42 * (1 - 0.85),
+                        }}
+                        transition={{
+                          duration: 1,
+                          delay: 0.5,
+                          ease: "easeOut",
+                        }}
+                      />
+                    </svg>
+                    <div
+                      className="text-4xl relative z-10"
+                      style={{ color: "var(--aura-text-primary)" }}
+                    >
+                      {stat.number}
                     </div>
                   </div>
+                ) : (
+                  <div
+                    className="text-4xl mb-2"
+                    style={{ color: "var(--aura-text-primary)" }}
+                  >
+                    {stat.number}
+                  </div>
+                )}
+
+                <div
+                  className="text-xs uppercase tracking-wider"
+                  style={{
+                    color: "var(--aura-text-secondary)",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {stat.label}
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* User Statistics */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-              <div className="text-3xl font-bold text-white mb-2">12</div>
-              <div className="text-sm text-gray-400 uppercase tracking-wider">
-                DAY STREAK
-              </div>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-              <div className="text-3xl font-bold text-white mb-2">4</div>
-              <div className="text-sm text-gray-400 uppercase tracking-wider">
-                SESSIONS
-              </div>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-              <div className="text-3xl font-bold text-white mb-2">85%</div>
-              <div className="text-sm text-gray-400 uppercase tracking-wider">
-                MOOD SCORE
-              </div>
-            </div>
-            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 text-center">
-              <div className="text-3xl font-bold text-white mb-2">5</div>
-              <div className="text-sm text-gray-400 uppercase tracking-wider">
-                JOURNALS
-              </div>
-            </div>
-          </div>
+            ))}
+          </motion.div>
         </div>
       </main>
     </div>
   );
 }
-

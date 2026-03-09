@@ -10,7 +10,13 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL is None:
     raise ValueError("DATABASE_URL is not set in the environment variables")
 
-engine = create_engine(DATABASE_URL) 
+# Keep pooled DB connections healthy for managed Postgres providers (e.g., Neon)
+# that may close idle SSL sessions.
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 Base = declarative_base()

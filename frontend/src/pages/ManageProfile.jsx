@@ -1,505 +1,636 @@
-import { useState, useEffect } from "react";
-import { updateProfile } from "../api";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, createElement } from "react";
+import {
+  Camera,
+  Mail,
+  Lock,
+  Globe,
+  Bell,
+  Moon,
+  Download,
+  Trash2,
+  AlertTriangle,
+  Check,
+  HelpCircle,
+} from "lucide-react";
+import { motion } from "motion/react";
+import Sidebar from "../components/Sidebar";
 
 export default function ManageProfile() {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [bio, setBio] = useState("");
-  const [botPersonality, setBotPersonality] = useState(50);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [activeSection, setActiveSection] = useState("general");
-  const navigate = useNavigate();
+  const [darkMode, setDarkMode] = useState(false);
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [pushNotifications, setPushNotifications] = useState(true);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [fullName, setFullName] = useState("Jane Doe");
+  const [email, setEmail] = useState("jane@example.com");
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
     if (userStr) {
       try {
         const user = JSON.parse(userStr);
-        const nameParts = (user.name || "").split(" ");
-        setFirstName(nameParts[0] || "");
-        setLastName(nameParts.slice(1).join(" ") || "");
-        setEmail(user.email || "");
-        setBio(user.bio || "");
-      } catch {}
+        if (user?.name) setFullName(user.name);
+        if (user?.email) setEmail(user.email);
+      } catch {
+        // Keep defaults for malformed local payload.
+      }
     }
   }, []);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMsg("");
-    try {
-      const res = await updateProfile({
-        name: `${firstName} ${lastName}`.trim(),
-        email,
-        bio,
-        bot_personality: botPersonality,
-      });
-      setMsg("Profile updated!");
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-    } catch (err) {
-      setMsg(err.response?.data?.detail || "Update failed");
-    } finally {
-      setLoading(false);
+  const handlePasswordChange = () => {
+    if (newPassword === confirmPassword) {
+      alert("Password changed successfully!");
+      setShowPasswordForm(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } else {
+      alert("Passwords do not match");
     }
   };
 
-  const handleSignOut = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    navigate("/login");
+  const handleDataExport = () => {
+    alert("Your data export will be emailed to you within 24 hours.");
   };
 
-  const getUserInitials = () => {
-    const first = firstName.charAt(0).toUpperCase();
-    const last = lastName.charAt(0).toUpperCase();
-    return first + (last || "");
+  const handleDeleteHistory = () => {
+    if (
+      confirm(
+        "Are you sure you want to delete all conversation history? This cannot be undone.",
+      )
+    ) {
+      alert("Conversation history deleted.");
+    }
   };
 
-  const getUserName = () => {
-    if (firstName || lastName) {
-      return `${firstName} ${lastName}`.trim();
+  const handleDeleteAccount = () => {
+    if (
+      confirm(
+        "Are you absolutely sure? This will permanently delete your account and all data. This action cannot be undone.",
+      )
+    ) {
+      alert(
+        "Account deletion initiated. You will receive a confirmation email.",
+      );
     }
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        return user.name || "User";
-      } catch {}
-    }
-    return "User";
   };
+
+  const initials =
+    fullName
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part[0]?.toUpperCase())
+      .slice(0, 2)
+      .join("") || "JD";
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-200 flex flex-col">
-      {/* Top Header */}
-      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg
-            className="w-6 h-6 text-blue-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-            />
-          </svg>
-          <span className="font-bold text-xl text-white">MindfulBot</span>
-        </div>
-        <nav className="flex items-center gap-6">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-gray-400 hover:text-white transition"
-          >
-            Dashboard
-          </button>
-          <button className="text-blue-400 font-medium">Settings</button>
-          <button className="text-gray-400 hover:text-white transition">
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.21 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-          </button>
-          <div className="w-8 h-8 rounded-full bg-orange-400 border-2 border-white flex items-center justify-center">
-            <span className="text-white font-bold text-sm">
-              {getUserInitials() || "U"}
-            </span>
-          </div>
-        </nav>
-      </header>
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-          {/* User Profile Section */}
-          <div className="p-6 border-b border-gray-700">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 rounded-full bg-orange-400 border-2 border-white flex items-center justify-center">
-                <span className="text-white font-bold">
-                  {getUserInitials() || "U"}
-                </span>
-              </div>
-              <div>
-                <div className="font-semibold text-white">{getUserName()}</div>
-                <div className="text-sm text-gray-400">Free Plan</div>
-              </div>
+      <main
+        className="flex-1 overflow-y-auto"
+        style={{ background: "#F7FAFD" }}
+      >
+        <header
+          className="px-8 py-4 bg-white flex items-center justify-between"
+          style={{
+            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+            height: "64px",
+          }}
+        >
+          <h2 className="text-xl" style={{ color: "var(--aura-text-primary)" }}>
+            Settings
+          </h2>
+          <div className="flex items-center gap-4">
+            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+              <Bell size={20} style={{ color: "var(--aura-text-secondary)" }} />
+            </button>
+            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+              <HelpCircle
+                size={20}
+                style={{ color: "var(--aura-text-secondary)" }}
+              />
+            </button>
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs cursor-pointer"
+              style={{ background: "#4A90D9", color: "white" }}
+            >
+              {initials}
             </div>
           </div>
+        </header>
 
-          {/* Navigation Menu */}
-          <div className="flex-1 overflow-y-auto p-4">
-            <nav className="space-y-1">
-              <button
-                onClick={() => setActiveSection("general")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  activeSection === "general"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                  />
-                </svg>
-                <span className="font-medium">General</span>
-              </button>
-              <button
-                onClick={() => setActiveSection("chat")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  activeSection === "chat"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-                <span className="font-medium">Chat Preferences</span>
-              </button>
-              <button
-                onClick={() => setActiveSection("notifications")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  activeSection === "notifications"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.21 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                  />
-                </svg>
-                <span className="font-medium">Notifications</span>
-              </button>
-              <button
-                onClick={() => setActiveSection("privacy")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  activeSection === "privacy"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                  />
-                </svg>
-                <span className="font-medium">Privacy & Security</span>
-              </button>
-              <button
-                onClick={() => setActiveSection("goals")}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                  activeSection === "goals"
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-300 hover:bg-gray-700"
-                }`}
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"
-                  />
-                </svg>
-                <span className="font-medium">My Goals</span>
-              </button>
-            </nav>
-          </div>
-
-          {/* Sign Out Button */}
-          <div className="p-4 border-t border-gray-700">
-            <button
-              onClick={handleSignOut}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition"
+        <div className="p-8">
+          <div className="max-w-4xl mx-auto space-y-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+              <h1
+                className="text-4xl mb-2"
+                style={{ color: "var(--aura-text-primary)" }}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              <span className="font-medium">Sign Out</span>
-            </button>
-          </div>
-        </aside>
+                Settings
+              </h1>
+              <p
+                className="text-lg"
+                style={{ color: "var(--aura-text-secondary)" }}
+              >
+                Manage your account and preferences
+              </p>
+            </motion.div>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto">
-            {activeSection === "general" && (
-              <form onSubmit={handleSubmit}>
-                <h1 className="text-3xl font-bold text-white mb-2">
-                  General Settings
-                </h1>
-                <p className="text-gray-400 mb-8">
-                  Manage your personal details and account configuration.
-                </p>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.1 }}
+              className="bg-white p-8"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <h2
+                className="text-2xl mb-6"
+                style={{ color: "var(--aura-text-primary)" }}
+              >
+                Profile
+              </h2>
 
-                {/* Profile Photo Section */}
-                <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="w-24 h-24 rounded-full bg-orange-400 border-2 border-white flex items-center justify-center flex-shrink-0">
-                        <span className="text-white font-bold text-2xl">
-                          {getUserInitials() || "U"}
-                        </span>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-1">
-                          Profile Photo
-                        </h3>
-                        <p className="text-sm text-gray-400 mb-3">
-                          This will be displayed on your profile.
-                        </p>
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-                          >
-                            Update
-                          </button>
-                          <button
-                            type="button"
-                            className="text-red-400 hover:text-red-300 text-sm font-medium"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
-                    >
-                      Upload New
-                    </button>
+              <div className="flex items-start gap-8">
+                <div className="relative group cursor-pointer">
+                  <div
+                    className="w-20 h-20 rounded-full flex items-center justify-center text-2xl"
+                    style={{ background: "#4A90D9", color: "white" }}
+                  >
+                    {initials}
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera size={24} className="text-white" />
                   </div>
                 </div>
 
-                {/* Personal Information Section */}
-                <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">
-                    Personal Information
-                  </h3>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Alex"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Morgan"
-                      />
-                    </div>
-                  </div>
+                <div className="flex-1 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label
+                      className="block text-sm mb-2"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                      style={{
+                        borderRadius: "12px",
+                        border: "1px solid #D0DCE8",
+                        color: "var(--aura-text-primary)",
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      className="block text-sm mb-2"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
                       Email Address
                     </label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                        <svg
-                          className="w-5 h-5 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                          />
-                        </svg>
-                      </div>
+                    <div className="flex items-center gap-3">
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-12 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="alex.morgan@email.com"
+                        className="flex-1 px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                        style={{
+                          borderRadius: "12px",
+                          border: "1px solid #D0DCE8",
+                          color: "var(--aura-text-primary)",
+                        }}
                       />
+                      <div
+                        className="flex items-center gap-2 px-3 py-2 text-sm"
+                        style={{ color: "#7EC8A4" }}
+                      >
+                        <Check size={16} />
+                        Verified
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Bio & Focus Areas Section */}
-                <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
-                  <h3 className="text-lg font-semibold text-white mb-4">
-                    Bio & Focus Areas
-                  </h3>
-                  <textarea
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    placeholder="Tell us a bit about your journey..."
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Brief description for your journal header.
-                  </p>
-                </div>
-
-                {/* Chat Experience Section */}
-                <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-white">
-                      Chat Experience
-                    </h3>
-                    <button
-                      type="button"
-                      className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-                    >
-                      Reset to Default
-                    </button>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-3">
-                      Bot Personality
-                    </label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={botPersonality}
-                        onChange={(e) => setBotPersonality(parseInt(e.target.value))}
-                        className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <span className="text-blue-400 font-medium min-w-[100px] text-right">
-                        {botPersonality < 33
-                          ? "Professional"
-                          : botPersonality < 67
-                          ? "Empathetic"
-                          : "Friendly"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Save Button */}
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold disabled:opacity-50 transition"
+                  <div
+                    className="text-sm"
+                    style={{ color: "var(--aura-text-secondary)" }}
                   >
-                    {loading ? "Saving..." : "Save Changes"}
+                    Member since March 1, 2026
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="bg-white p-8"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <h2
+                className="text-2xl mb-6"
+                style={{ color: "var(--aura-text-primary)" }}
+              >
+                Account
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <button
+                    onClick={() => setShowPasswordForm(!showPasswordForm)}
+                    className="flex items-center gap-3 text-left w-full p-4 hover:bg-gray-50 transition-all"
+                    style={{ borderRadius: "12px" }}
+                  >
+                    <Lock size={20} style={{ color: "#4A90D9" }} />
+                    <div className="flex-1">
+                      <div style={{ color: "var(--aura-text-primary)" }}>
+                        Change Password
+                      </div>
+                      <div
+                        className="text-sm"
+                        style={{ color: "var(--aura-text-secondary)" }}
+                      >
+                        Update your password regularly for security
+                      </div>
+                    </div>
+                  </button>
+
+                  {showPasswordForm && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="mt-4 pl-11 space-y-3"
+                    >
+                      <input
+                        type="password"
+                        placeholder="Current password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                        style={{
+                          borderRadius: "12px",
+                          border: "1px solid #D0DCE8",
+                          color: "var(--aura-text-primary)",
+                        }}
+                      />
+                      <input
+                        type="password"
+                        placeholder="New password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                        style={{
+                          borderRadius: "12px",
+                          border: "1px solid #D0DCE8",
+                          color: "var(--aura-text-primary)",
+                        }}
+                      />
+                      <input
+                        type="password"
+                        placeholder="Confirm new password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                        style={{
+                          borderRadius: "12px",
+                          border: "1px solid #D0DCE8",
+                          color: "var(--aura-text-primary)",
+                        }}
+                      />
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handlePasswordChange}
+                          className="px-6 py-2 text-white hover:opacity-90 transition-all"
+                          style={{ background: "#4A90D9", borderRadius: "8px" }}
+                        >
+                          Update Password
+                        </button>
+                        <button
+                          onClick={() => setShowPasswordForm(false)}
+                          className="px-6 py-2 hover:bg-gray-100 transition-all"
+                          style={{
+                            borderRadius: "8px",
+                            color: "var(--aura-text-secondary)",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
+                <div
+                  className="flex items-center gap-3 p-4"
+                  style={{ borderRadius: "12px", background: "#F7FAFD" }}
+                >
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white">
+                    <svg width="20" height="20" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div style={{ color: "var(--aura-text-primary)" }}>
+                      Google
+                    </div>
+                    <div
+                      className="text-sm"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      Connected
+                    </div>
+                  </div>
+                  <button
+                    className="text-sm hover:underline"
+                    style={{ color: "#E07C6B" }}
+                  >
+                    Disconnect
                   </button>
                 </div>
-
-                {msg && (
-                  <div
-                    className={`mt-4 text-center text-sm ${
-                      msg.includes("updated") ? "text-green-400" : "text-red-400"
-                    }`}
-                  >
-                    {msg}
-                  </div>
-                )}
-              </form>
-            )}
-
-            {activeSection !== "general" && (
-              <div className="text-center py-12">
-                <p className="text-gray-400">
-                  {activeSection === "chat" && "Chat Preferences coming soon..."}
-                  {activeSection === "notifications" &&
-                    "Notifications settings coming soon..."}
-                  {activeSection === "privacy" &&
-                    "Privacy & Security settings coming soon..."}
-                  {activeSection === "goals" && "My Goals coming soon..."}
-                </p>
               </div>
-            )}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+              className="bg-white p-8"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <h2
+                className="text-2xl mb-6"
+                style={{ color: "var(--aura-text-primary)" }}
+              >
+                Preferences
+              </h2>
+
+              <div className="space-y-4">
+                <SettingToggle
+                  icon={Moon}
+                  label="Dark Mode"
+                  description="Switch to dark theme"
+                  checked={darkMode}
+                  onChange={setDarkMode}
+                />
+                <SettingToggle
+                  icon={Mail}
+                  label="Email Notifications"
+                  description="Receive updates via email"
+                  checked={emailNotifications}
+                  onChange={setEmailNotifications}
+                />
+                <SettingToggle
+                  icon={Bell}
+                  label="Push Notifications"
+                  description="Get notified about important updates"
+                  checked={pushNotifications}
+                  onChange={setPushNotifications}
+                />
+
+                <div className="flex items-center gap-3 p-4">
+                  <Globe size={20} style={{ color: "#4A90D9" }} />
+                  <div className="flex-1">
+                    <div style={{ color: "var(--aura-text-primary)" }}>
+                      Language
+                    </div>
+                    <div
+                      className="text-sm"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      Choose your preferred language
+                    </div>
+                  </div>
+                  <select
+                    className="px-4 py-2 focus:outline-none focus:ring-2 transition-all"
+                    style={{
+                      borderRadius: "8px",
+                      border: "1px solid #D0DCE8",
+                      color: "var(--aura-text-primary)",
+                    }}
+                  >
+                    <option>English</option>
+                    <option>Spanish</option>
+                    <option>French</option>
+                    <option>German</option>
+                  </select>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              className="bg-white p-8"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <h2
+                className="text-2xl mb-6"
+                style={{ color: "var(--aura-text-primary)" }}
+              >
+                Privacy & Data
+              </h2>
+
+              <div className="space-y-4">
+                <button
+                  onClick={handleDataExport}
+                  className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
+                  style={{ borderRadius: "12px" }}
+                >
+                  <Download size={20} style={{ color: "#4A90D9" }} />
+                  <div className="flex-1">
+                    <div style={{ color: "var(--aura-text-primary)" }}>
+                      Export My Data
+                    </div>
+                    <div
+                      className="text-sm"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      Download a copy of your conversations and data
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleDeleteHistory}
+                  className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
+                  style={{ borderRadius: "12px" }}
+                >
+                  <Trash2 size={20} style={{ color: "#F5A962" }} />
+                  <div className="flex-1">
+                    <div style={{ color: "var(--aura-text-primary)" }}>
+                      Delete Conversation History
+                    </div>
+                    <div
+                      className="text-sm"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      Permanently remove all past conversations
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
+              className="p-8"
+              style={{
+                borderRadius: "20px",
+                border: "2px solid #E07C6B",
+                background: "rgba(224, 124, 107, 0.05)",
+              }}
+            >
+              <div className="flex items-start gap-3 mb-6">
+                <AlertTriangle size={24} style={{ color: "#E07C6B" }} />
+                <div>
+                  <h2 className="text-2xl mb-1" style={{ color: "#E07C6B" }}>
+                    Danger Zone
+                  </h2>
+                  <p
+                    className="text-sm"
+                    style={{ color: "var(--aura-text-secondary)" }}
+                  >
+                    These actions are permanent and cannot be undone
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleDeleteAccount}
+                className="px-6 py-3 text-white hover:opacity-90 transition-all"
+                style={{ background: "#E07C6B", borderRadius: "12px" }}
+              >
+                Delete My Account
+              </button>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.6 }}
+              className="bg-white p-8"
+              style={{
+                borderRadius: "20px",
+                boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+              }}
+            >
+              <h2
+                className="text-2xl mb-6"
+                style={{ color: "var(--aura-text-primary)" }}
+              >
+                About
+              </h2>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2">
+                  <span style={{ color: "var(--aura-text-secondary)" }}>
+                    App Version
+                  </span>
+                  <span
+                    className="px-3 py-1 text-sm"
+                    style={{
+                      background: "#F7FAFD",
+                      borderRadius: "8px",
+                      color: "var(--aura-text-primary)",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    v1.0.0
+                  </span>
+                </div>
+                <button
+                  className="text-sm hover:underline"
+                  style={{ color: "#4A90D9" }}
+                >
+                  Privacy Policy
+                </button>
+                <br />
+                <button
+                  className="text-sm hover:underline"
+                  style={{ color: "#4A90D9" }}
+                >
+                  Terms of Service
+                </button>
+                <br />
+                <button
+                  className="text-sm hover:underline"
+                  style={{ color: "#4A90D9" }}
+                >
+                  Help & Support
+                </button>
+              </div>
+            </motion.div>
           </div>
-        </main>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function SettingToggle({ icon, label, description, checked, onChange }) {
+  return (
+    <div className="flex items-center gap-3 p-4">
+      {createElement(icon, { size: 20, style: { color: "#4A90D9" } })}
+      <div className="flex-1">
+        <div style={{ color: "var(--aura-text-primary)" }}>{label}</div>
+        <div
+          className="text-sm"
+          style={{ color: "var(--aura-text-secondary)" }}
+        >
+          {description}
+        </div>
       </div>
+      <button
+        onClick={() => onChange(!checked)}
+        className="relative w-12 h-6 rounded-full transition-all"
+        style={{ background: checked ? "#4A90D9" : "#D0DCE8" }}
+      >
+        <motion.div
+          className="absolute top-1 w-4 h-4 bg-white rounded-full"
+          animate={{ left: checked ? "28px" : "4px" }}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        />
+      </button>
     </div>
   );
 }

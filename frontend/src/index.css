@@ -1,4 +1,11 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap");
 @import "tailwindcss";
+
+:root {
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --aura-text-primary: #1f2940;
+  --aura-text-secondary: #66768f;
+}
 
 html,
 body {
@@ -8,7 +15,9 @@ body {
 }
 
 @keyframes typing-dot {
-  0%, 60%, 100% {
+  0%,
+  60%,
+  100% {
     transform: translateY(0);
     opacity: 0.7;
   }

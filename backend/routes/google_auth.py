@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError
 from dotenv import load_dotenv
 import os
 
@@ -98,8 +99,12 @@ async def google_login(request: Request, db: Session = Depends(get_db)):
             print(f"ValueError in Google token verification: {str(ve)}")
             raise HTTPException(status_code=400, detail=f"Invalid token: {str(ve)}")
 
+    except OperationalError as oe:
+        db.rollback()
+        print(f"Database error in Google login: {str(oe)}")
+        raise HTTPException(status_code=503, detail="Database connection lost. Please try again.")
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
         print(f"Unexpected error in Google login: {str(e)}\n{error_details}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
