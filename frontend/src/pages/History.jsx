@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   MoreVertical,
@@ -11,92 +12,43 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Sidebar from "../components/Sidebar";
+import API from "../api";
 
 export default function History() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
-  const [chats, setChats] = useState([
-    {
-      id: "1",
-      title: "Morning anxiety talk",
-      preview:
-        "We discussed strategies for managing morning anxiety and setting a positive tone for the day...",
-      date: "2 hours ago",
-      tag: "Anxiety",
-      messageCount: 24,
-    },
-    {
-      id: "2",
-      title: "Work stress discussion",
-      preview:
-        "Explored work-life balance and techniques for reducing workplace stress...",
-      date: "Yesterday",
-      tag: "Stress",
-      messageCount: 18,
-    },
-    {
-      id: "3",
-      title: "Weekend reflection",
-      preview:
-        "Reflected on the weekend activities and their impact on overall well-being...",
-      date: "2 days ago",
-      tag: "Reflection",
-      messageCount: 15,
-    },
-    {
-      id: "4",
-      title: "Sleep improvement plan",
-      preview:
-        "Created a comprehensive plan to improve sleep quality with actionable steps...",
-      date: "3 days ago",
-      tag: "Health",
-      messageCount: 32,
-    },
-    {
-      id: "5",
-      title: "Goal setting session",
-      preview:
-        "Set achievable personal and professional goals for the upcoming month...",
-      date: "4 days ago",
-      tag: "Goals",
-      messageCount: 21,
-    },
-    {
-      id: "6",
-      title: "Mindfulness practice",
-      preview:
-        "Discussed mindfulness techniques and meditation practices for daily routine...",
-      date: "5 days ago",
-      tag: "Mindfulness",
-      messageCount: 12,
-    },
-    {
-      id: "7",
-      title: "Relationship concerns",
-      preview:
-        "Talked about communication strategies and emotional support in relationships...",
-      date: "1 week ago",
-      tag: "Relationships",
-      messageCount: 28,
-    },
-    {
-      id: "8",
-      title: "Career development",
-      preview:
-        "Explored career aspirations and steps to achieve professional growth...",
-      date: "1 week ago",
-      tag: "Career",
-      messageCount: 19,
-    },
-  ]);
-
+  const [chats, setChats] = useState([]);
   const [menuOpen, setMenuOpen] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
 
-  const handleDelete = (id) => {
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const { data } = await API.get("/history/");
+      setChats(data.map(chat => ({
+        id: chat.id,
+        title: chat.title,
+        preview: chat.preview || "Started a new conversation...",
+        date: new Date(chat.created_at).toLocaleDateString(),
+        tag: chat.tag || "General",
+        messageCount: chat.message_count
+      })));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDelete = async (id) => {
     if (confirm("Are you sure you want to delete this conversation?")) {
-      setChats(chats.filter((chat) => chat.id !== id));
+      try {
+         await API.delete(`/history/${id}`);
+         setChats(chats.filter((chat) => chat.id !== id));
+      } catch (e) { console.error(e); }
       setMenuOpen(null);
     }
   };
@@ -107,13 +59,16 @@ export default function History() {
     setMenuOpen(null);
   };
 
-  const saveRename = (id) => {
+  const saveRename = async (id) => {
     if (editTitle.trim()) {
-      setChats(
-        chats.map((chat) =>
-          chat.id === id ? { ...chat, title: editTitle.trim() } : chat,
-        ),
-      );
+      try {
+        await API.put(`/history/${id}`, { title: editTitle.trim() });
+        setChats(
+          chats.map((chat) =>
+            chat.id === id ? { ...chat, title: editTitle.trim() } : chat,
+          ),
+        );
+      } catch (e) { console.error(e); }
     }
     setEditingId(null);
     setEditTitle("");
@@ -142,9 +97,11 @@ export default function History() {
       Mindfulness: "#7EC8A4",
       Relationships: "#4A90D9",
       Career: "#2C5F8A",
+      General: "#9BAABB"
     };
     return colors[tag] || "#4A90D9";
   };
+
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -270,7 +227,8 @@ export default function History() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: -100 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
-                  className="bg-white p-6 hover:-translate-y-0.5 transition-all relative"
+                  onClick={() => navigate(`/chat/${chat.id}`)}
+                  className="bg-white p-6 hover:-translate-y-0.5 transition-all relative cursor-pointer"
                   style={{
                     borderRadius: "20px",
                     boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
@@ -367,9 +325,10 @@ export default function History() {
 
                     <div className="relative">
                       <button
-                        onClick={() =>
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setMenuOpen(menuOpen === chat.id ? null : chat.id)
-                        }
+                        }}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-all"
                       >
                         <MoreVertical
@@ -393,7 +352,7 @@ export default function History() {
                             }}
                           >
                             <button
-                              onClick={() => handleRename(chat.id, chat.title)}
+                              onClick={(e) => { e.stopPropagation(); handleRename(chat.id, chat.title); }}
                               className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition-all text-left"
                             >
                               <Edit3 size={16} style={{ color: "#4A90D9" }} />
@@ -405,7 +364,7 @@ export default function History() {
                               </span>
                             </button>
                             <button
-                              onClick={() => handleDelete(chat.id)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(chat.id); }}
                               className="w-full flex items-center gap-3 px-4 py-2 hover:bg-red-50 transition-all text-left"
                             >
                               <Trash2 size={16} style={{ color: "#E07C6B" }} />

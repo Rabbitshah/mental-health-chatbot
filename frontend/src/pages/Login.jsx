@@ -190,7 +190,7 @@ export default function Login() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#E0E0E0] min-h-[52px] flex items-center justify-center px-4">
+        <div className="flex justify-center">
           <GoogleLoginButton />
         </div>
 

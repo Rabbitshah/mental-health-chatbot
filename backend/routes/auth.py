@@ -40,6 +40,9 @@ class UserUpdate(BaseModel):
     password: str | None = None
     current_password: str
 
+class UserDelete(BaseModel):
+    current_password: str
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -81,6 +84,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
             "name": new_user.name,
             "username": new_user.username,
             "email": new_user.email,
+            "created_at": new_user.created_at.isoformat() if new_user.created_at else None,
         },
         "token": token,
     }
@@ -100,6 +104,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             "name": existing.name,
             "username": existing.username,
             "email": existing.email,
+            "created_at": existing.created_at.isoformat() if existing.created_at else None,
         },
     }
 
@@ -154,5 +159,85 @@ def update_profile(
             "name": user.name,
             "username": user.username,
             "email": user.email,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
         },
     }
+
+@router.delete("/profile")
+def delete_profile(
+    delete_req: UserDelete,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+        user_email = payload.get("email")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not pwd_context.verify(delete_req.current_password, user.password):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    db.delete(user)
+    db.commit()
+    return {"msg": "Account deleted successfully"}
+
+@router.get("/export")
+def export_data(
+    db: Session = Depends(get_db),
+    authorization: str = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+        user_email = payload.get("email")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    data = {
+        "user": {
+            "name": user.name,
+            "email": user.email,
+            "username": user.username,
+            "created_at": user.created_at.isoformat() if user.created_at else None
+        },
+        "sessions": []
+    }
+
+    for session in user.sessions:
+        session_data = {
+            "title": session.title,
+            "created_at": session.created_at.isoformat(),
+            "messages": [
+                {
+                    "sender": msg.sender,
+                    "text": msg.text,
+                    "created_at": msg.created_at.isoformat()
+                } for msg in session.messages
+            ]
+        }
+        data["sessions"].append(session_data)
+
+    data["moods"] = [
+        {
+            "mood_score": m.mood_score,
+            "energy_level": m.energy_level,
+            "stress_level": m.stress_level,
+            "date": m.date.isoformat()
+        } for m in user.moods
+    ]
+
+    return data

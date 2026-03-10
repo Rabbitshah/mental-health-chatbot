@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
+import API from "../api";
 
 export default function ManageProfile() {
   const [darkMode, setDarkMode] = useState(false);
@@ -25,6 +26,10 @@ export default function ManageProfile() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("Jane Doe");
   const [email, setEmail] = useState("jane@example.com");
+  const [profilePassword, setProfilePassword] = useState("");
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [memberSince, setMemberSince] = useState("");
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -33,26 +38,76 @@ export default function ManageProfile() {
         const user = JSON.parse(userStr);
         if (user?.name) setFullName(user.name);
         if (user?.email) setEmail(user.email);
-      } catch {
-        // Keep defaults for malformed local payload.
+        if (user.created_at) {
+          const date = new Date(user.created_at);
+          setMemberSince(date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }));
+        } else {
+            setMemberSince("March 10, 2026");
+        }
+      } catch (e) {
+        console.error("Failed to parse user data", e);
       }
     }
   }, []);
 
-  const handlePasswordChange = () => {
-    if (newPassword === confirmPassword) {
+  const handleProfileUpdate = async () => {
+    if (!profilePassword) {
+      alert("Please enter your current password to verify identity.");
+      return;
+    }
+    setIsUpdatingProfile(true);
+    try {
+      const res = await API.put("/auth/profile", {
+        name: fullName,
+        email: email,
+        current_password: profilePassword
+      });
+      alert("Profile updated successfully!");
+      // Update localStorage
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      localStorage.setItem("user", JSON.stringify({ ...user, name: fullName, email: email }));
+      setProfilePassword("");
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to update profile");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const handlePasswordChange = async () => {
+    if (newPassword !== confirmPassword) {
+      alert("New passwords do not match");
+      return;
+    }
+    try {
+      await API.put("/auth/profile", {
+        password: newPassword,
+        current_password: currentPassword
+      });
       alert("Password changed successfully!");
       setShowPasswordForm(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-    } else {
-      alert("Passwords do not match");
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to change password");
     }
   };
 
-  const handleDataExport = () => {
-    alert("Your data export will be emailed to you within 24 hours.");
+  const handleExportData = async () => {
+    try {
+      const res = await API.get("/auth/export");
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `aura_data_export_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+    } catch (error) {
+      alert("Failed to export data");
+    }
   };
 
   const handleDeleteHistory = () => {
@@ -65,15 +120,28 @@ export default function ManageProfile() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    if (
-      confirm(
-        "Are you absolutely sure? This will permanently delete your account and all data. This action cannot be undone.",
-      )
-    ) {
-      alert(
-        "Account deletion initiated. You will receive a confirmation email.",
-      );
+  const handleDeleteAccount = async () => {
+    if (!profilePassword) {
+      alert("Please enter your current password to confirm account deletion.");
+      return;
+    }
+    
+    if (!window.confirm("ARE YOU SURE? This will permanently delete all your chat history and wellness data. This action cannot be undone.")) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await API.delete("/auth/profile", {
+        data: { current_password: profilePassword }
+      });
+      alert("Your account has been deleted.");
+      localStorage.clear();
+      window.location.href = "/";
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to delete account");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -213,21 +281,42 @@ export default function ManageProfile() {
                           color: "var(--aura-text-primary)",
                         }}
                       />
-                      <div
-                        className="flex items-center gap-2 px-3 py-2 text-sm"
-                        style={{ color: "#7EC8A4" }}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-gray-100 mt-6">
+                    <label className="block text-sm mb-2" style={{ color: "var(--aura-text-secondary)" }}>
+                      Current Password (Required to save changes)
+                    </label>
+                    <div className="flex gap-3">
+                      <input
+                        type="password"
+                        placeholder="Enter password to verify"
+                        value={profilePassword}
+                        onChange={(e) => setProfilePassword(e.target.value)}
+                        className="flex-1 px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                        style={{
+                          borderRadius: "12px",
+                          border: "1px solid #D0DCE8",
+                          color: "var(--aura-text-primary)",
+                        }}
+                      />
+                      <button
+                        onClick={handleProfileUpdate}
+                        disabled={isUpdatingProfile}
+                        className="px-8 py-3 text-white font-medium hover:opacity-90 transition-all disabled:opacity-50"
+                        style={{ background: "#4A90D9", borderRadius: "12px" }}
                       >
-                        <Check size={16} />
-                        Verified
-                      </div>
+                        {isUpdatingProfile ? "Saving..." : "Save Changes"}
+                      </button>
                     </div>
                   </div>
 
                   <div
-                    className="text-sm"
+                    className="text-sm mt-4"
                     style={{ color: "var(--aura-text-secondary)" }}
                   >
-                    Member since March 1, 2026
+                    Member since {memberSince}
                   </div>
                 </div>
               </div>
@@ -470,7 +559,7 @@ export default function ManageProfile() {
 
               <div className="space-y-4">
                 <button
-                  onClick={handleDataExport}
+                  onClick={handleExportData}
                   className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
                   style={{ borderRadius: "12px" }}
                 >

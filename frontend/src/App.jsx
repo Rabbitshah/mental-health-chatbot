@@ -19,6 +19,7 @@ function App() {
         <Route path="/insights" element={<Insights />} />
         <Route path="/history" element={<History />} />
         <Route path="/chat" element={<Chatbot />} />
+        <Route path="/chat/:sessionId" element={<Chatbot />} />
         <Route path="/profile" element={<ManageProfile />} />
         <Route path="*" element={<SplashScreen />} />
       </Routes>

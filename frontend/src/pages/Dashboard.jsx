@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   MessageCircle,
@@ -14,64 +15,85 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
+import API from "../api";
+import MoodCheckInModal from "../components/MoodCheckInModal";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-
-  const conversations = [
+  const [userName, setUserName] = useState("Alex");
+  const [conversations, setConversations] = useState([]);
+  const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
+  const [stats, setStats] = useState([
+    { number: "-", label: "DAY STREAK", icon: Flame, color: "#F5A962" },
     {
-      title: "Managing Work Stress",
-      preview: "We discussed breathing techniques for anxiety...",
-      tag: "Anxiety",
-      time: "2 hours ago",
-      icon: SettingsIcon,
-      color: "#4A90D9",
-    },
-    {
-      title: "Sleep Improvement Plan",
-      preview: "Review of last night's routine and sleep quality.",
-      tag: "Health",
-      time: "Yesterday",
-      icon: Moon,
-      color: "#4A90D9",
-    },
-    {
-      title: "Weekly Goal Setting",
-      preview: "Setting achievable targets for the upcoming week.",
-      tag: "Goals",
-      time: "3 days ago",
-      icon: CheckCircle,
-      color: "#4A90D9",
-    },
-  ];
-
-  const moodData = [
-    { day: "M", value: 60, color: "#4A90D9" },
-    { day: "T", value: 80, color: "#4A90D9" },
-    { day: "W", value: 45, color: "#E07C6B" },
-    { day: "T", value: 30, color: "#E07C6B" },
-    { day: "F", value: 70, color: "#4A90D9" },
-    { day: "S", value: 90, color: "#7EC8A4" },
-    { day: "S", value: 65, color: "#4A90D9" },
-  ];
-
-  const stats = [
-    { number: "12", label: "DAY STREAK", icon: Flame, color: "#F5A962" },
-    {
-      number: "4",
-      label: "SESSIONS THIS WEEK",
+      number: "-",
+      label: "TOTAL SESSIONS",
       icon: MessageCircle,
       color: "#4A90D9",
     },
     {
-      number: "85%",
+      number: "-%",
       label: "MOOD SCORE",
       icon: ArrowUp,
       color: "#7EC8A4",
       showProgress: true,
+      progressTarget: 0
     },
-    { number: "5", label: "JOURNALS", icon: Book, color: "#4A90D9" },
-  ];
+    { number: "-", label: "JOURNALS", icon: Book, color: "#4A90D9" },
+  ]);
+
+  const [moodTrend, setMoodTrend] = useState([]);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user?.name) setUserName(user.name.split(" ")[0]);
+      } catch (e) {}
+    }
+
+    const fetchData = async () => {
+      try {
+        const [historyRes, statsRes, moodRes] = await Promise.all([
+          API.get("/history/"),
+          API.get("/insights/stats"),
+          API.get("/insights/mood?days=7")
+        ]);
+        
+        setConversations(historyRes.data.slice(0, 3).map(chat => ({
+          id: chat.id,
+          title: chat.title,
+          preview: chat.preview,
+          tag: chat.tag || "General",
+          time: new Date(chat.created_at).toLocaleDateString(),
+          icon: MessageCircle,
+          color: "#4A90D9"
+        })));
+        
+        const data = statsRes.data;
+        setStats([
+          { number: data.day_streak.toString(), label: "DAY STREAK", icon: Flame, color: "#F5A962" },
+          { number: data.total_sessions.toString(), label: "TOTAL SESSIONS", icon: MessageCircle, color: "#4A90D9" },
+          { number: Math.round(data.mood_score_percent) + "%", label: "MOOD SCORE", icon: ArrowUp, color: "#7EC8A4", showProgress: true, progressTarget: data.mood_score_percent / 100 },
+          { number: data.journals.toString(), label: "JOURNALS", icon: Book, color: "#4A90D9" },
+        ]);
+
+        // Process mood trend
+        const days = ["S", "M", "T", "W", "T", "F", "S"];
+        const trend = moodRes.data.map(entry => ({
+          day: days[new Date(entry.date).getDay()],
+          value: entry.mood_score * 10,
+          color: entry.mood_score > 7 ? "#7EC8A4" : entry.mood_score > 4 ? "#4A90D9" : "#E07C6B"
+        }));
+        setMoodTrend(trend);
+
+      } catch (e) {
+        console.error("Dashboard fetch error", e);
+      }
+    };
+    fetchData();
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -93,7 +115,7 @@ export default function Dashboard() {
                   className="text-4xl"
                   style={{ color: "var(--aura-text-primary)" }}
                 >
-                  Good evening, Alex.
+                  Good evening, {userName}.
                 </h1>
                 <motion.span
                   className="text-3xl"
@@ -111,9 +133,21 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-                <Eye
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setIsMoodModalOpen(true)}
+                  className="px-6 py-2.5 text-white font-medium transition-all hover:scale-105 active:scale-95"
+                  style={{ 
+                    background: "linear-gradient(135deg, #4A90D9, #2C5F8A)",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(44, 95, 138, 0.2)"
+                  }}
+                >
+                  Check In Now
+                </button>
+                <div className="flex items-center gap-3">
+                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
+                    <Eye
                   size={20}
                   style={{ color: "var(--aura-text-secondary)" }}
                 />
@@ -130,7 +164,8 @@ export default function Dashboard() {
                 AD
               </div>
             </div>
-          </motion.div>
+          </div>
+        </motion.div>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -263,7 +298,7 @@ export default function Dashboard() {
                     onMouseLeave={(e) => {
                       e.currentTarget.style.boxShadow = "none";
                     }}
-                    onClick={() => navigate("/chat")}
+                    onClick={() => navigate(conv.id ? `/chat/${conv.id}` : "/chat")}
                   >
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
@@ -336,26 +371,32 @@ export default function Dashboard() {
 
                 <div className="mb-5">
                   <div className="flex items-end justify-between gap-2 h-32">
-                    {moodData.map((bar, index) => (
-                      <div
-                        key={`${bar.day}-${index}`}
-                        className="flex-1 flex flex-col items-center gap-2"
-                      >
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: `${bar.value}%` }}
-                          transition={{
-                            duration: 0.6,
-                            delay: 0.4 + index * 0.05,
-                          }}
-                          className="w-full rounded-t-lg"
-                          style={{ background: bar.color }}
-                        />
-                        <span className="text-xs" style={{ color: "#9BAABB" }}>
-                          {bar.day}
-                        </span>
+                    {moodTrend.length > 0 ? (
+                      moodTrend.map((bar, index) => (
+                        <div
+                          key={`${bar.day}-${index}`}
+                          className="flex-1 flex flex-col items-center gap-2"
+                        >
+                          <motion.div
+                            initial={{ height: 0 }}
+                            animate={{ height: `${bar.value}%` }}
+                            transition={{
+                              duration: 0.6,
+                              delay: 0.4 + index * 0.05,
+                            }}
+                            className="w-full rounded-t-lg"
+                            style={{ background: bar.color }}
+                          />
+                          <span className="text-xs" style={{ color: "#9BAABB" }}>
+                            {bar.day}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                        No data yet this week
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 
@@ -515,7 +556,7 @@ export default function Dashboard() {
                         strokeDasharray={`${2 * Math.PI * 42}`}
                         initial={{ strokeDashoffset: 2 * Math.PI * 42 }}
                         animate={{
-                          strokeDashoffset: 2 * Math.PI * 42 * (1 - 0.85),
+                          strokeDashoffset: 2 * Math.PI * 42 * (1 - (stat.progressTarget || 0)),
                         }}
                         transition={{
                           duration: 1,
@@ -554,6 +595,43 @@ export default function Dashboard() {
           </motion.div>
         </div>
       </main>
+
+      <MoodCheckInModal 
+        isOpen={isMoodModalOpen} 
+        onClose={() => setIsMoodModalOpen(false)} 
+        onRefresh={() => {
+          // Re-fetch data to update stats
+          const fetchData = async () => {
+            try {
+              const [historyRes, statsRes] = await Promise.all([
+                API.get("/history/"),
+                API.get("/insights/stats")
+              ]);
+              
+              setConversations(historyRes.data.slice(0, 3).map(chat => ({
+                id: chat.id,
+                title: chat.title,
+                preview: chat.preview,
+                tag: chat.tag || "General",
+                time: new Date(chat.created_at).toLocaleDateString(),
+                icon: MessageCircle,
+                color: "#4A90D9"
+              })));
+              
+              const data = statsRes.data;
+              setStats([
+                { number: data.day_streak.toString(), label: "DAY STREAK", icon: Flame, color: "#F5A962" },
+                { number: data.total_sessions.toString(), label: "TOTAL SESSIONS", icon: MessageCircle, color: "#4A90D9" },
+                { number: Math.round(data.mood_score_percent) + "%", label: "MOOD SCORE", icon: ArrowUp, color: "#7EC8A4", showProgress: true, progressTarget: data.mood_score_percent / 100 },
+                { number: data.journals.toString(), label: "JOURNALS", icon: Book, color: "#4A90D9" },
+              ]);
+            } catch (e) {
+              console.error("Dashboard fetch error", e);
+            }
+          };
+          fetchData();
+        }}
+      />
     </div>
   );
 }

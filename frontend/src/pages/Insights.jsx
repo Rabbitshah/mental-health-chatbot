@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   TrendingUp,
   Activity,
@@ -11,11 +11,11 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
+import API from "../api";
 
 export default function Insights() {
   const [selectedPeriod, setSelectedPeriod] = useState("week");
-
-  const moodTrends = [
+  const [moodTrends, setMoodTrends] = useState([
     { day: "Mon", mood: 7.2, energy: 6.8, stress: 4.5 },
     { day: "Tue", mood: 8.5, energy: 8.0, stress: 3.2 },
     { day: "Wed", mood: 6.0, energy: 5.5, stress: 6.8 },
@@ -23,7 +23,7 @@ export default function Insights() {
     { day: "Fri", mood: 7.8, energy: 7.5, stress: 4.0 },
     { day: "Sat", mood: 9.0, energy: 8.8, stress: 2.5 },
     { day: "Sun", mood: 8.2, energy: 7.8, stress: 3.0 },
-  ];
+  ]);
 
   const insights = [
     {
@@ -63,7 +63,7 @@ export default function Insights() {
     },
   ];
 
-  const weeklyStats = [
+  const [weeklyStats, setWeeklyStats] = useState([
     {
       label: "Average Mood",
       value: "7.6",
@@ -96,7 +96,42 @@ export default function Insights() {
       color: "#F5A962",
       progress: 45,
     },
-  ];
+  ]);
+
+  useEffect(() => {
+    const fetchInsights = async () => {
+      try {
+        const daysParam = selectedPeriod === 'week' ? 7 : (selectedPeriod === 'month' ? 30 : 365);
+        const res = await API.get(`/insights/mood?days=${daysParam}`);
+        const entries = res.data;
+        
+        if (entries && entries.length > 0) {
+          const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          const trends = entries.slice(-7).map(e => ({
+             day: daysOfWeek[new Date(e.date).getDay()],
+             mood: e.mood_score,
+             energy: e.energy_level,
+             stress: e.stress_level
+          }));
+          setMoodTrends(trends);
+          
+          const avgMood = (entries.reduce((acc, e) => acc + e.mood_score, 0) / entries.length).toFixed(1);
+          const avgEnergy = (entries.reduce((acc, e) => acc + e.energy_level, 0) / entries.length).toFixed(1);
+          const avgStress = (entries.reduce((acc, e) => acc + e.stress_level, 0) / entries.length).toFixed(1);
+          
+          setWeeklyStats([
+             { label: "Average Mood", value: avgMood, max: "10", icon: Heart, color: "#7EC8A4", progress: avgMood * 10 },
+             { label: "Energy Levels", value: avgEnergy, max: "10", icon: Activity, color: "#4A90D9", progress: avgEnergy * 10 },
+             { label: "Sleep Quality", value: "8.2", max: "10", icon: Moon, color: "#2C5F8A", progress: 82 },
+             { label: "Stress Level", value: avgStress, max: "10", icon: Brain, color: "#F5A962", progress: avgStress * 10 },
+          ]);
+        }
+      } catch (e) {
+        console.error("Insights fetch error", e);
+      }
+    };
+    fetchInsights();
+  }, [selectedPeriod]);
 
   const achievements = [
     {

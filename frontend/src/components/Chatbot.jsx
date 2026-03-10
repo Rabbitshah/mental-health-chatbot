@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   MessageCircle,
   Send,
@@ -8,12 +9,13 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import API from "../api";
 import Sidebar from "./Sidebar";
 
 export default function Chatbot() {
   const navigate = useNavigate();
+  const { sessionId } = useParams();
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -36,7 +38,28 @@ export default function Chatbot() {
         // Ignore malformed local user payload and keep defaults.
       }
     }
-  }, [navigate]);
+    
+    // Fetch history if sessionId is in URL
+    if (sessionId) {
+      const fetchHistory = async () => {
+        try {
+          const res = await API.get(`/history/${sessionId}`);
+          const formattedMessages = res.data.map(msg => ({
+            id: msg.id.toString(),
+            text: msg.text,
+            sender: msg.sender,
+            timestamp: new Date(msg.created_at)
+          }));
+          setMessages(formattedMessages);
+        } catch (error) {
+          console.error("Failed to load history", error);
+        }
+      };
+      fetchHistory();
+    } else {
+      setMessages([]);
+    }
+  }, [navigate, sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -58,7 +81,18 @@ export default function Chatbot() {
     setIsThinking(true);
 
     try {
-      const res = await API.post("/chat", { message: prompt });
+      const payload = { message: prompt };
+      if (sessionId) {
+        payload.session_id = parseInt(sessionId, 10);
+      }
+      
+      const res = await API.post("/chat", payload);
+      
+      if (!sessionId && res.data.session_id) {
+        // Replace URL dynamically so subsequent messages use this session without reloading
+        navigate(`/chat/${res.data.session_id}`, { replace: true });
+      }
+
       const aiMessage = {
         id: (Date.now() + 1).toString(),
         text:
@@ -69,10 +103,15 @@ export default function Chatbot() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
-    } catch {
+    } catch (error) {
+      let errorMsg = "I could not connect right now. Please try again in a moment.";
+      if (error.response?.status === 429) {
+          errorMsg = "You're sending messages too quickly. Please pause for a moment to let me catch up!";
+      }
+
       const aiMessage = {
         id: (Date.now() + 1).toString(),
-        text: "I could not connect right now. Please try again in a moment.",
+        text: errorMsg,
         sender: "ai",
         timestamp: new Date(),
       };
@@ -83,6 +122,7 @@ export default function Chatbot() {
   };
 
   const handleKeyDown = (e) => {
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -307,7 +347,25 @@ function MessageBubble({ message }) {
               : "0 2px 8px rgba(0, 0, 0, 0.06)",
           }}
         >
-          <p className="leading-relaxed">{message.text}</p>
+          {isUser ? (
+            <p className="leading-relaxed whitespace-pre-wrap flex flex-col">{message.text}</p>
+          ) : (
+            <ReactMarkdown 
+              className="leading-relaxed flex flex-col gap-2"
+              components={{
+                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-2" {...props} />,
+                ol: ({node, ...props}) => <ol className="list-decimal ml-5 mb-2" {...props} />,
+                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
+                h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
+                h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
+                strong: ({node, ...props}) => <strong className="font-bold" {...props} />
+              }}
+            >
+              {message.text}
+            </ReactMarkdown>
+          )}
         </div>
         <div
           className={`text-xs mt-2 ${isUser ? "text-right" : "text-left"}`}

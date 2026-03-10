@@ -1,7 +1,12 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from database import get_db
+from models import ChatSession, ChatMessage, User
+from dependencies import get_current_user
+from limiter import limiter
 
 import google.generativeai as genai
 
@@ -18,14 +23,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 # ✅ Force Gemini 1.5 Flash
 MODEL_NAME = "gemini-2.5-flash"
 print("Using Gemini model:", MODEL_NAME)
-model = genai.GenerativeModel(MODEL_NAME)
-
-router = APIRouter()
-
-
-class ChatRequest(BaseModel):
-    message: str
-
 
 MENTAL_HEALTH_SYSTEM_PROMPT = """
 You are a warm, calming, and emotionally supportive mental-health chatbot. 
@@ -87,27 +84,89 @@ Overall communication vibe:
 - Soft, friendly, non-judgmental, human-like.
 - Help users feel heard, safe, and supported.
 - Speak in a way that builds trust and emotional comfort.
-
 """
 
+# Include the system prompt using the system_instruction feature available in newer models
+model = genai.GenerativeModel(
+    model_name=MODEL_NAME,
+    system_instruction=MENTAL_HEALTH_SYSTEM_PROMPT
+)
+
+router = APIRouter()
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: int | None = None
 
 @router.post("/chat")
-def chat(request: ChatRequest):
+@limiter.limit("5/minute")
+def chat(
+    request: Request,
+    body: ChatRequest, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     try:
-        full_prompt = (
-            MENTAL_HEALTH_SYSTEM_PROMPT
-            + "\n\nUser question or concern:\n"
-            + request.message
+        # 1. Resolve or create ChatSession
+        if body.session_id:
+            chat_session = db.query(ChatSession).filter(
+                ChatSession.id == body.session_id,
+                ChatSession.user_id == current_user.id
+            ).first()
+            if not chat_session:
+                raise HTTPException(status_code=404, detail="Chat session not found")
+        else:
+            # Generate a simple title from the first message
+            title = body.message[:30] + "..." if len(body.message) > 30 else body.message
+            chat_session = ChatSession(user_id=current_user.id, title=title)
+            db.add(chat_session)
+            db.commit()
+            db.refresh(chat_session)
+
+        # 2. Fetch history and build Gemini format
+        previous_messages = db.query(ChatMessage).filter(
+            ChatMessage.session_id == chat_session.id
+        ).order_by(ChatMessage.created_at.asc()).all()
+
+        history = []
+        for msg in previous_messages:
+            role = "user" if msg.sender == "user" else "model"
+            history.append({"role": role, "parts": [msg.text]})
+
+        # 3. Save User Message
+        user_msg = ChatMessage(
+            session_id=chat_session.id,
+            sender="user",
+            text=body.message
         )
+        db.add(user_msg)
+        db.commit()
 
-        response = model.generate_content(full_prompt)
-        return {"response": response.text}
+        # 4. Generate AI response
+        chat = model.start_chat(history=history)
+        response = chat.send_message(body.message)
+        ai_text = response.text
 
+        # 5. Save AI Message
+        ai_msg = ChatMessage(
+            session_id=chat_session.id,
+            sender="ai",
+            text=ai_text
+        )
+        db.add(ai_msg)
+        db.commit()
+
+        return {
+            "response": ai_text,
+            "session_id": chat_session.id
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         msg = str(e)
         print("Gemini Error in /chat:", repr(e))
 
-        # Friendly message when quota is exceeded
         if "ResourceExhausted" in repr(e) or "quota" in msg.lower():
             raise HTTPException(
                 status_code=503,
@@ -118,5 +177,4 @@ def chat(request: ChatRequest):
                 ),
             )
 
-        # Generic error for anything else
         raise HTTPException(status_code=500, detail="Internal error in AI backend.")

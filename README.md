@@ -8,6 +8,8 @@ A mental health chatbot application with React frontend and FastAPI backend.
 
 ```bash
 cd backend
+python -m venv venv
+venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 ```

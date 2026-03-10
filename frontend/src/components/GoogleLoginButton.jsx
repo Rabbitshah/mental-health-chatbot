@@ -18,8 +18,12 @@ const GoogleLoginButton = () => {
   };
   
   return (
-    <div>
-      <GoogleLogin onSuccess={handleSuccess} onError={() => console.error("Google login failed")} />
+    <div className="w-full flex justify-center">
+      <GoogleLogin 
+        onSuccess={handleSuccess} 
+        onError={() => console.error("Google login failed")}
+        width="340"
+      />
     </div>
   );
 };
