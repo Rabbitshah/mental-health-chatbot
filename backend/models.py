@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -13,6 +13,10 @@ class User(Base):
     password = Column(String, nullable=True)
     google_id = Column(String, nullable=True)
     picture = Column(String, nullable=True)
+    dark_mode = Column(Boolean, nullable=False, default=False)
+    email_notifications = Column(Boolean, nullable=False, default=True)
+    push_notifications = Column(Boolean, nullable=False, default=True)
+    language = Column(String, nullable=False, default="English")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
@@ -25,6 +29,8 @@ class ChatSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     title = Column(String, nullable=False, default="New Conversation")
     tag = Column(String, nullable=True, default="General")
+    is_pinned = Column(Boolean, nullable=False, default=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

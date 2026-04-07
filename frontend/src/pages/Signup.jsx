@@ -55,7 +55,7 @@ export default function Signup() {
         username,
       });
 
-      const res = await API.post("/login", { identifier: email, password });
+      const res = await API.post("/login", { email, password });
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
       navigate("/dashboard");
