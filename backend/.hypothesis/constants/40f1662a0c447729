@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\jwt_handler.py
+# hypothesis_version: 6.151.9
+
+['.env', 'HS256', 'SECRET_KEY', 'User not found', 'exp']

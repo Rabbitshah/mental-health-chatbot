@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
+import re
 
 from database import SessionLocal, engine
 from models import User
 from database import Base
 from jwt_handler import create_access_token, decode_token
+from limiter import limiter
 
 import os
 
@@ -23,10 +25,23 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class UserCreate(BaseModel):
-    email: str
-    password: str
-    name: str
-    username: str
+    email: str = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=8, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
+    username: str = Field(..., min_length=3, max_length=50)
+
+    @validator('email')
+    def validate_email_format(cls, v):
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(pattern, v):
+            raise ValueError('Invalid email format')
+        return v.lower()
+
+    @validator('username')
+    def validate_username(cls, v):
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError('Username can only contain letters, numbers, underscores, and hyphens')
+        return v
 
 
 class UserLogin(BaseModel):
@@ -42,6 +57,9 @@ class UserUpdate(BaseModel):
 
 class UserDelete(BaseModel):
     current_password: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 # Dependency
 def get_db():
@@ -96,10 +114,16 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     if not existing or not pwd_context.verify(user.password, existing.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_access_token({"email": existing.email})
+    # Create access token (15 minutes)
+    access_token = create_access_token({"email": existing.email})
+    
+    # Create refresh token (7 days) and store in database
+    from jwt_handler import create_refresh_token
+    refresh_token = create_refresh_token(existing.id, db)
 
     return {
-        "token": token,
+        "token": access_token,
+        "refresh_token": refresh_token,
         "user": {
             "name": existing.name,
             "username": existing.username,
@@ -107,6 +131,42 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             "created_at": existing.created_at.isoformat() if existing.created_at else None,
         },
     }
+
+
+@router.post("/auth/refresh")
+def refresh_token(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Exchange a valid refresh token for a new access token.
+    """
+    from jwt_handler import validate_refresh_token
+    
+    try:
+        # Validate the refresh token and get the user
+        user = validate_refresh_token(request.refresh_token, db)
+        
+        # Issue a new access token
+        new_access_token = create_access_token({"email": user.email})
+        
+        return {
+            "token": new_access_token,
+            "token_type": "bearer"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.post("/logout")
+def logout(request: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """
+    Revoke a refresh token to log out the user.
+    """
+    from jwt_handler import revoke_refresh_token
+    
+    try:
+        revoke_refresh_token(request.refresh_token, db)
+        return {"msg": "Logged out successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 
 @router.put("/profile")
@@ -190,7 +250,9 @@ def delete_profile(
     return {"msg": "Account deleted successfully"}
 
 @router.get("/export")
+@limiter.limit("5/hour")
 def export_data(
+    request: Request,
     db: Session = Depends(get_db),
     authorization: str = Header(None),
 ):

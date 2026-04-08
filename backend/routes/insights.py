@@ -1,19 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timedelta
 
 from database import get_db
 from models import MoodEntry, User
 from dependencies import get_current_user
+from limiter import limiter
 
 router = APIRouter(prefix="/insights")
 
 class MoodRequest(BaseModel):
-    mood_score: float
-    energy_level: float
-    stress_level: float
+    mood_score: float = Field(..., ge=1, le=10)
+    energy_level: float = Field(..., ge=1, le=10)
+    stress_level: float = Field(..., ge=1, le=10)
 
 class MoodResponse(BaseModel):
     id: int
@@ -26,12 +27,13 @@ class MoodResponse(BaseModel):
         from_attributes = True
 
 @router.post("/mood", response_model=MoodResponse)
-def add_mood_entry(request: MoodRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def add_mood_entry(request: Request, mood_request: MoodRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     new_entry = MoodEntry(
         user_id=current_user.id,
-        mood_score=request.mood_score,
-        energy_level=request.energy_level,
-        stress_level=request.stress_level
+        mood_score=mood_request.mood_score,
+        energy_level=mood_request.energy_level,
+        stress_level=mood_request.stress_level
     )
     db.add(new_entry)
     db.commit()

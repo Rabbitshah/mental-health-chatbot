@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\routes\chat.py
+# hypothesis_version: 6.151.9
+
+[404, 500, 503, 5000, '...', '/chat', '5/minute', 'GEMINI_API_KEY', 'ResourceExhausted', 'Using Gemini model:', 'ai', 'gemini-2.5-flash', 'message', 'model', 'parts', 'quota', 'response', 'role', 'session_id', 'user']

@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\models.py
+# hypothesis_version: 6.151.9
+
+['ChatMessage', 'ChatSession', 'CrisisEvent', 'General', 'MoodEntry', 'New Conversation', 'Notification', 'RefreshToken', 'User', 'all, delete-orphan', 'chat_messages', 'chat_messages.id', 'chat_sessions', 'chat_sessions.id', 'crisis_events', 'messages', 'mood_entries', 'moods', 'notifications', 'refresh_tokens', 'session', 'sessions', 'user', 'users', 'users.id']

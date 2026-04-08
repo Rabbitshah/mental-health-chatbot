@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\routes\history.py
+# hypothesis_version: 6.151.9
+
+[100, 404, '...', '/', '/history', '/{session_id}', 'Session not found', 'ai', 'message']

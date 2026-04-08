@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\routes\insights.py
+# hypothesis_version: 6.151.9
+
+['/insights', '/mood', '/stats', 'day_streak', 'journals', 'mood_score_percent', 'total_sessions']

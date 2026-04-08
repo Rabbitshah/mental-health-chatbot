@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\dependencies.py
+# hypothesis_version: 6.151.9
+
+['Bearer', 'Bearer ', 'WWW-Authenticate', 'email']

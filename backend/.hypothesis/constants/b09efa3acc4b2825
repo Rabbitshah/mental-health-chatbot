@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\routes\auth.py
+# hypothesis_version: 6.151.9
+
+[100, 255, 400, 401, 404, '/auth/refresh', '/export', '/login', '/logout', '/profile', '/signup', 'Bearer ', 'Email already in use', 'Invalid credentials', 'Invalid email format', 'Invalid token', 'Not authenticated', 'Profile updated', 'Signup successful', 'User not found', '^[a-zA-Z0-9_-]+$', 'auto', 'bcrypt', 'bearer', 'created_at', 'date', 'email', 'energy_level', 'messages', 'mood_score', 'moods', 'msg', 'name', 'refresh_token', 'sender', 'sessions', 'stress_level', 'text', 'title', 'token', 'token_type', 'user', 'username']

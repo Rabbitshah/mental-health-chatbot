@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\database.py
+# hypothesis_version: 6.151.9
+
+[1800, '.env', 'DATABASE_URL']

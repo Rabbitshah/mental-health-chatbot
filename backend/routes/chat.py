@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
+from typing import Optional
 import os
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
@@ -95,11 +96,18 @@ model = genai.GenerativeModel(
 router = APIRouter()
 
 class ChatRequest(BaseModel):
-    message: str
-    session_id: int | None = None
+    message: str = Field(..., min_length=1, max_length=5000)
+    session_id: Optional[int] = Field(None, ge=1)
+
+    @validator('message')
+    def message_not_whitespace(cls, v):
+        if not v or v.strip() == '':
+            raise ValueError('Message cannot be empty or whitespace only')
+        return v.strip()
 
 @router.post("/chat")
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
+@limiter.limit("100/hour")
 def chat(
     request: Request,
     body: ChatRequest, 

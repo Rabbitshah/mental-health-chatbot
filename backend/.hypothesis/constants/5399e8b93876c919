@@ -1,0 +1,4 @@
+# file: C:\Users\maana\Desktop\mental-health-chatbot\backend\routes\google_auth.py
+# hypothesis_version: 6.151.9
+
+[400, 500, 503, '/google-login', '@', 'GOOGLE_CLIENT_ID', 'Token not provided', 'credential', 'email', 'id', 'name', 'picture', 'sub', 'token', 'user', 'username']
