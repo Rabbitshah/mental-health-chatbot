@@ -5,7 +5,12 @@ from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
 import re
 
-from database import SessionLocal, engine
+from database import (
+    SessionLocal,
+    engine,
+    ensure_chat_session_status_columns,
+    ensure_user_preference_columns,
+)
 from models import User
 from database import Base
 from jwt_handler import create_access_token, decode_token
@@ -20,6 +25,8 @@ load_dotenv()
 
 # Ensure tables exist
 Base.metadata.create_all(bind=engine)
+ensure_chat_session_status_columns()
+ensure_user_preference_columns()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -53,7 +60,11 @@ class UserUpdate(BaseModel):
     name: str | None = None
     email: str | None = None
     password: str | None = None
-    current_password: str
+    current_password: str | None = None
+    dark_mode: bool | None = None
+    email_notifications: bool | None = None
+    push_notifications: bool | None = None
+    language: str | None = None
 
 class UserDelete(BaseModel):
     current_password: str
@@ -98,12 +109,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
     return {
         "msg": "Signup successful",
-        "user": {
-            "name": new_user.name,
-            "username": new_user.username,
-            "email": new_user.email,
-            "created_at": new_user.created_at.isoformat() if new_user.created_at else None,
-        },
+        "user": build_user_payload(new_user),
         "token": token,
     }
 
@@ -111,7 +117,7 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == user.email).first()
-    if not existing or not pwd_context.verify(user.password, existing.password):
+    if not existing or not existing.password or not pwd_context.verify(user.password, existing.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Create access token (15 minutes)
@@ -195,9 +201,18 @@ def update_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Check current password
-    if not pwd_context.verify(update.current_password, user.password):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    requires_password_verification = any([
+        update.name is not None and update.name != user.name,
+        update.email is not None and update.email != user.email,
+        bool(update.password),
+    ])
+
+    # Require current password only for sensitive account changes on accounts that already have a local password.
+    if user.password and requires_password_verification:
+        if not update.current_password:
+            raise HTTPException(status_code=400, detail="Current password is required")
+        if not pwd_context.verify(update.current_password, user.password):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
 
     # Apply updates
     if update.name:
@@ -209,18 +224,21 @@ def update_profile(
         user.email = update.email
     if update.password:
         user.password = pwd_context.hash(update.password)
+    if update.dark_mode is not None:
+        user.dark_mode = update.dark_mode
+    if update.email_notifications is not None:
+        user.email_notifications = update.email_notifications
+    if update.push_notifications is not None:
+        user.push_notifications = update.push_notifications
+    if update.language:
+        user.language = update.language
 
     db.commit()
     db.refresh(user)
 
     return {
         "msg": "Profile updated",
-        "user": {
-            "name": user.name,
-            "username": user.username,
-            "email": user.email,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        },
+        "user": build_user_payload(user),
     }
 
 @router.delete("/profile")
@@ -242,8 +260,11 @@ def delete_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not pwd_context.verify(delete_req.current_password, user.password):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    if user.password:
+        if not delete_req.current_password:
+            raise HTTPException(status_code=400, detail="Current password is required")
+        if not pwd_context.verify(delete_req.current_password, user.password):
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
 
     db.delete(user)
     db.commit()
@@ -274,15 +295,26 @@ def export_data(
             "name": user.name,
             "email": user.email,
             "username": user.username,
-            "created_at": user.created_at.isoformat() if user.created_at else None
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "preferences": {
+                "dark_mode": bool(user.dark_mode),
+                "email_notifications": bool(user.email_notifications),
+                "push_notifications": bool(user.push_notifications),
+                "language": user.language or "English",
+            },
         },
         "sessions": []
     }
 
     for session in user.sessions:
         session_data = {
+            "id": session.id,
             "title": session.title,
+            "tag": session.tag,
+            "is_pinned": bool(session.is_pinned),
+            "is_archived": bool(session.is_archived),
             "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             "messages": [
                 {
                     "sender": msg.sender,
@@ -303,3 +335,39 @@ def export_data(
     ]
 
     return data
+
+@router.get("/privacy-summary")
+def get_privacy_summary(
+    db: Session = Depends(get_db),
+    authorization: str = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+        user_email = payload.get("email")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    message_count = sum(len(session.messages) for session in user.sessions)
+    archived_sessions = sum(1 for session in user.sessions if session.is_archived)
+    pinned_sessions = sum(1 for session in user.sessions if session.is_pinned)
+
+    return {
+        "sessions": len(user.sessions),
+        "messages": message_count,
+        "mood_entries": len(user.moods),
+        "archived_sessions": archived_sessions,
+        "pinned_sessions": pinned_sessions,
+        "preferences": {
+            "dark_mode": bool(user.dark_mode),
+            "email_notifications": bool(user.email_notifications),
+            "push_notifications": bool(user.push_notifications),
+            "language": user.language or "English",
+        },
+    }

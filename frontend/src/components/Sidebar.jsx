@@ -10,9 +10,17 @@ import {
   MoreVertical,
   Edit3,
   Trash2,
+  X,
+  Pin,
+  Archive,
+  RotateCcw,
+  Phone,
+  ShieldAlert,
+  HeartHandshake,
 } from "lucide-react";
-import { useState, createElement } from "react";
+import { useState, createElement, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import API from "../api";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -21,16 +29,52 @@ export default function Sidebar() {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
   const [showRecents, setShowRecents] = useState(true);
-  const [recentChats, setRecentChats] = useState([
-    { id: "1", title: "Morning anxiety talk", time: "2h ago" },
-    { id: "2", title: "Work stress discussion", time: "Yesterday" },
-    { id: "3", title: "Weekend reflection", time: "2 days ago" },
-  ]);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [recentChats, setRecentChats] = useState([]);
+  const [userName, setUserName] = useState("Jane Doe");
+
+  const fetchRecentChats = async () => {
+    try {
+      const { data } = await API.get("/history/");
+      setRecentChats(
+        data.slice(0, 5).map((chat) => ({
+          id: chat.id.toString(),
+          title: chat.title,
+          time: formatRelativeDate(chat.updated_at || chat.created_at),
+          isPinned: chat.is_pinned,
+          isArchived: chat.is_archived,
+        })),
+      );
+    } catch (error) {
+      console.error("Failed to load recent chats", error);
+    }
+  };
+
+  useEffect(() => {
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user?.name) {
+          setUserName(user.name);
+        }
+      } catch {
+        // Ignore malformed local user payload and keep defaults.
+      }
+    }
+
+    fetchRecentChats();
+    window.addEventListener("sessions-updated", fetchRecentChats);
+
+    return () => {
+      window.removeEventListener("sessions-updated", fetchRecentChats);
+    };
+  }, []);
 
   const getActiveNav = () => {
     const path = location.pathname;
     if (path === "/dashboard") return "home";
-    if (path === "/chat") return "chat";
+    if (path.startsWith("/chat")) return "chat";
     if (path === "/history") return "history";
     if (path === "/insights") return "insights";
     if (path === "/profile") return "settings";
@@ -39,9 +83,18 @@ export default function Sidebar() {
 
   const activeNav = getActiveNav();
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm("Are you sure you want to delete this chat?")) {
-      setRecentChats(recentChats.filter((c) => c.id !== id));
+      try {
+        await API.delete(`/history/${id}`);
+        setRecentChats((prev) => prev.filter((chat) => chat.id !== id));
+        window.dispatchEvent(new Event("sessions-updated"));
+        if (location.pathname === `/chat/${id}`) {
+          navigate("/chat");
+        }
+      } catch (error) {
+        alert(error.response?.data?.detail || "Failed to delete chat");
+      }
       setMenuOpen(null);
     }
   };
@@ -52,13 +105,19 @@ export default function Sidebar() {
     setMenuOpen(null);
   };
 
-  const saveRename = (id) => {
+  const saveRename = async (id) => {
     if (editTitle.trim()) {
-      setRecentChats(
-        recentChats.map((chat) =>
-          chat.id === id ? { ...chat, title: editTitle.trim() } : chat,
-        ),
-      );
+      try {
+        await API.put(`/history/${id}`, { title: editTitle.trim() });
+        setRecentChats((prev) =>
+          prev.map((chat) =>
+            chat.id === id ? { ...chat, title: editTitle.trim() } : chat,
+          ),
+        );
+        window.dispatchEvent(new Event("sessions-updated"));
+      } catch (error) {
+        alert(error.response?.data?.detail || "Failed to rename chat");
+      }
     }
     setEditingId(null);
     setEditTitle("");
@@ -67,6 +126,38 @@ export default function Sidebar() {
   const cancelRename = () => {
     setEditingId(null);
     setEditTitle("");
+  };
+
+  const handleStatusUpdate = async (id, updates) => {
+    try {
+      const { data } = await API.patch(`/history/${id}/status`, updates);
+      setRecentChats((prev) =>
+        prev
+          .map((chat) =>
+            chat.id === id
+              ? {
+                  ...chat,
+                  isPinned: data.is_pinned,
+                  isArchived: data.is_archived,
+                }
+              : chat,
+          )
+          .filter((chat) => !chat.isArchived)
+          .sort((a, b) => {
+            if (a.isPinned !== b.isPinned) {
+              return Number(b.isPinned) - Number(a.isPinned);
+            }
+            return 0;
+          }),
+      );
+      setMenuOpen(null);
+      window.dispatchEvent(new Event("sessions-updated"));
+      if (location.pathname === `/chat/${id}` && data.is_archived) {
+        navigate("/chat");
+      }
+    } catch (error) {
+      alert(error.response?.data?.detail || "Failed to update chat status");
+    }
   };
 
   return (
@@ -129,7 +220,7 @@ export default function Sidebar() {
               <RecentChatItem
                 key={chat.id}
                 chat={chat}
-                onClick={() => navigate("/chat")}
+                onClick={() => navigate(`/chat/${chat.id}`)}
                 isEditing={editingId === chat.id}
                 editTitle={editTitle}
                 setEditTitle={setEditTitle}
@@ -140,6 +231,12 @@ export default function Sidebar() {
                   setMenuOpen(menuOpen === chat.id ? null : chat.id)
                 }
                 onRename={() => handleRename(chat.id, chat.title)}
+                onTogglePin={() =>
+                  handleStatusUpdate(chat.id, { is_pinned: !chat.isPinned })
+                }
+                onToggleArchive={() =>
+                  handleStatusUpdate(chat.id, { is_archived: !chat.isArchived })
+                }
                 onDelete={() => handleDelete(chat.id)}
               />
             ))}
@@ -172,6 +269,7 @@ export default function Sidebar() {
 
       <div className="px-2 mb-3 shrink-0">
         <button
+          onClick={() => setShowHelpModal(true)}
           className="w-full flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
           style={{
             background: "#E07C6B",
@@ -194,10 +292,15 @@ export default function Sidebar() {
           className="w-9 h-9 rounded-full flex items-center justify-center text-sm"
           style={{ background: "#4A90D9" }}
         >
-          JD
+          {userName
+            .split(" ")
+            .filter(Boolean)
+            .map((part) => part[0]?.toUpperCase())
+            .slice(0, 2)
+            .join("") || "JD"}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm truncate">Jane Doe</div>
+          <div className="text-sm truncate">{userName}</div>
           <div className="text-xs opacity-50 truncate">Free plan</div>
         </div>
         <button
@@ -216,8 +319,109 @@ export default function Sidebar() {
           />
         </button>
       </div>
+
+      <AnimatePresence>
+        {showHelpModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-md bg-white text-left"
+              style={{ borderRadius: "20px", color: "#1C2B3A" }}
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                <div>
+                  <h3 className="text-xl font-semibold">Get Help Now</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    If this feels urgent, please reach out to immediate support.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowHelpModal(false)}
+                  className="p-2 rounded-full hover:bg-gray-100 transition-all"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="px-6 py-5 space-y-4">
+                <div
+                  className="p-4"
+                  style={{
+                    background: "rgba(224, 124, 107, 0.08)",
+                    borderRadius: "14px",
+                    border: "1px solid rgba(224, 124, 107, 0.2)",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert size={20} style={{ color: "#E07C6B" }} />
+                    <div>
+                      <div className="font-medium">Emergency Support</div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        If you might hurt yourself or someone else, call your local emergency number immediately.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <a
+                  href="tel:988"
+                  className="flex items-center gap-3 p-4 hover:bg-gray-50 transition-all"
+                  style={{ borderRadius: "14px", border: "1px solid #E5E7EB" }}
+                >
+                  <Phone size={18} style={{ color: "#4A90D9" }} />
+                  <div>
+                    <div className="font-medium">Call or Text 988</div>
+                    <p className="text-sm text-gray-600">
+                      Suicide & Crisis Lifeline in the U.S. and Canada.
+                    </p>
+                  </div>
+                </a>
+
+                <div
+                  className="flex items-start gap-3 p-4"
+                  style={{ borderRadius: "14px", border: "1px solid #E5E7EB" }}
+                >
+                  <HeartHandshake size={18} style={{ color: "#7EC8A4" }} />
+                  <div>
+                    <div className="font-medium">Reach Someone You Trust</div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Consider messaging a friend, family member, counselor, or local mental health professional.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  AuraChat can support reflection, but it is not a replacement for emergency or clinical care.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </aside>
   );
+}
+
+function formatRelativeDate(dateString) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return date.toLocaleDateString();
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -250,6 +454,8 @@ function RecentChatItem({
   onMenuToggle,
   onRename,
   onDelete,
+  onTogglePin,
+  onToggleArchive,
 }) {
   return (
     <div className="relative group">
@@ -292,13 +498,24 @@ function RecentChatItem({
         </div>
       ) : (
         <>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={onClick}
-            className="w-full px-3 py-2 rounded-lg hover:bg-white/5 transition-all text-left"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }}
+            className="w-full px-3 py-2 rounded-lg hover:bg-white/5 transition-all text-left cursor-pointer"
           >
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
-                <div className="text-sm truncate opacity-90">{chat.title}</div>
+                <div className="text-sm truncate opacity-90 flex items-center gap-2">
+                  <span className="truncate">{chat.title}</span>
+                  {chat.isPinned && <Pin size={12} />}
+                </div>
                 <div className="text-xs opacity-50 mt-0.5">{chat.time}</div>
               </div>
               <button
@@ -306,12 +523,13 @@ function RecentChatItem({
                   e.stopPropagation();
                   onMenuToggle();
                 }}
+                type="button"
                 className="p-1 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
               >
                 <MoreVertical size={16} />
               </button>
             </div>
-          </button>
+          </div>
 
           <AnimatePresence>
             {menuOpen && (
@@ -332,6 +550,7 @@ function RecentChatItem({
                     e.stopPropagation();
                     onRename();
                   }}
+                  type="button"
                   className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-100 transition-all text-left"
                 >
                   <Edit3 size={14} style={{ color: "#4A90D9" }} />
@@ -342,8 +561,39 @@ function RecentChatItem({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    onTogglePin();
+                  }}
+                  type="button"
+                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-100 transition-all text-left"
+                >
+                  <Pin size={14} style={{ color: "#4A90D9" }} />
+                  <span className="text-sm" style={{ color: "#1C2B3A" }}>
+                    {chat.isPinned ? "Unpin" : "Pin"}
+                  </span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleArchive();
+                  }}
+                  type="button"
+                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-100 transition-all text-left"
+                >
+                  {chat.isArchived ? (
+                    <RotateCcw size={14} style={{ color: "#4A90D9" }} />
+                  ) : (
+                    <Archive size={14} style={{ color: "#9BAABB" }} />
+                  )}
+                  <span className="text-sm" style={{ color: "#1C2B3A" }}>
+                    {chat.isArchived ? "Restore" : "Archive"}
+                  </span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onDelete();
                   }}
+                  type="button"
                   className="w-full flex items-center gap-3 px-4 py-2 hover:bg-red-50 transition-all text-left"
                 >
                   <Trash2 size={14} style={{ color: "#E07C6B" }} />

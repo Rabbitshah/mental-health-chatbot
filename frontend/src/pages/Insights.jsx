@@ -4,7 +4,6 @@ import {
   Activity,
   Heart,
   Brain,
-  Moon,
   Award,
   Target,
   CheckCircle2,
@@ -15,6 +14,8 @@ import API from "../api";
 
 export default function Insights() {
   const [selectedPeriod, setSelectedPeriod] = useState("week");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [moodTrends, setMoodTrends] = useState([
     { day: "Mon", mood: 7.2, energy: 6.8, stress: 4.5 },
     { day: "Tue", mood: 8.5, energy: 8.0, stress: 3.2 },
@@ -25,43 +26,40 @@ export default function Insights() {
     { day: "Sun", mood: 8.2, energy: 7.8, stress: 3.0 },
   ]);
 
-  const insights = [
+  const [insights, setInsights] = useState([
     {
-      title: "Mood Improving",
-      description:
-        "Your average mood has increased by 15% this week compared to last week.",
-      trend: "up",
-      percentage: "+15%",
+      title: "Mood Trend",
+      description: "Start completing daily check-ins to unlock personalized wellness insights.",
+      trend: "neutral",
+      percentage: "0%",
       icon: TrendingUp,
       color: "#7EC8A4",
     },
     {
-      title: "Sleep Quality",
-      description:
-        "You've been sleeping better. Average sleep quality improved significantly.",
-      trend: "up",
-      percentage: "+22%",
-      icon: Moon,
+      title: "Energy Levels",
+      description: "We need a few check-ins before we can identify your energy patterns.",
+      trend: "neutral",
+      percentage: "0%",
+      icon: Activity,
       color: "#4A90D9",
     },
     {
       title: "Stress Levels",
-      description:
-        "Stress has decreased after implementing breathing exercises.",
-      trend: "down",
-      percentage: "-18%",
-      icon: Activity,
-      color: "#7EC8A4",
+      description: "Track stress for a few days and this card will begin showing real changes.",
+      trend: "neutral",
+      percentage: "0%",
+      icon: Brain,
+      color: "#F5A962",
     },
     {
-      title: "Engagement",
-      description: "You're engaging more with wellness activities this month.",
-      trend: "up",
-      percentage: "+30%",
+      title: "Check-in Consistency",
+      description: "Keep checking in regularly so we can identify meaningful patterns over time.",
+      trend: "neutral",
+      percentage: "0%",
       icon: Heart,
       color: "#F5A962",
     },
-  ];
+  ]);
 
   const [weeklyStats, setWeeklyStats] = useState([
     {
@@ -81,12 +79,12 @@ export default function Insights() {
       progress: 71,
     },
     {
-      label: "Sleep Quality",
-      value: "8.2",
-      max: "10",
-      icon: Moon,
+      label: "Check-in Rate",
+      value: "0",
+      max: "%",
+      icon: CheckCircle2,
       color: "#2C5F8A",
-      progress: 82,
+      progress: 0,
     },
     {
       label: "Stress Level",
@@ -97,80 +95,169 @@ export default function Insights() {
       progress: 45,
     },
   ]);
-
-  useEffect(() => {
-    const fetchInsights = async () => {
-      try {
-        const daysParam = selectedPeriod === 'week' ? 7 : (selectedPeriod === 'month' ? 30 : 365);
-        const res = await API.get(`/insights/mood?days=${daysParam}`);
-        const entries = res.data;
-        
-        if (entries && entries.length > 0) {
-          const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-          const trends = entries.slice(-7).map(e => ({
-             day: daysOfWeek[new Date(e.date).getDay()],
-             mood: e.mood_score,
-             energy: e.energy_level,
-             stress: e.stress_level
-          }));
-          setMoodTrends(trends);
-          
-          const avgMood = (entries.reduce((acc, e) => acc + e.mood_score, 0) / entries.length).toFixed(1);
-          const avgEnergy = (entries.reduce((acc, e) => acc + e.energy_level, 0) / entries.length).toFixed(1);
-          const avgStress = (entries.reduce((acc, e) => acc + e.stress_level, 0) / entries.length).toFixed(1);
-          
-          setWeeklyStats([
-             { label: "Average Mood", value: avgMood, max: "10", icon: Heart, color: "#7EC8A4", progress: avgMood * 10 },
-             { label: "Energy Levels", value: avgEnergy, max: "10", icon: Activity, color: "#4A90D9", progress: avgEnergy * 10 },
-             { label: "Sleep Quality", value: "8.2", max: "10", icon: Moon, color: "#2C5F8A", progress: 82 },
-             { label: "Stress Level", value: avgStress, max: "10", icon: Brain, color: "#F5A962", progress: avgStress * 10 },
-          ]);
-        }
-      } catch (e) {
-        console.error("Insights fetch error", e);
-      }
-    };
-    fetchInsights();
-  }, [selectedPeriod]);
-
-  const achievements = [
+  const [topTopics, setTopTopics] = useState([
+    { topic: "General", count: 0, color: "#9BAABB" },
+  ]);
+  const [achievements, setAchievements] = useState([
     {
       title: "7-Day Streak",
       description: "Checked in daily for a full week",
       icon: Flame,
-      earned: true,
+      earned: false,
       color: "#F5A962",
+      progress: 0,
+      target: 7,
     },
     {
       title: "Mood Master",
       description: "Tracked mood 30 times",
       icon: Award,
-      earned: true,
+      earned: false,
       color: "#7EC8A4",
+      progress: 0,
+      target: 30,
     },
     {
       title: "Early Bird",
       description: "Completed 5 morning check-ins",
       icon: CheckCircle2,
-      earned: true,
+      earned: false,
       color: "#4A90D9",
+      progress: 0,
+      target: 5,
     },
     {
-      title: "Wellness Warrior",
-      description: "Used app for 30 consecutive days",
+      title: "Conversation Starter",
+      description: "Started 10 support sessions",
       icon: Target,
       earned: false,
-      color: "#9BAABB",
+      color: "#E07C6B",
+      progress: 0,
+      target: 10,
     },
-  ];
+  ]);
+  const [patterns, setPatterns] = useState({
+    currentStreak: 0,
+    longestStreak: 0,
+    bestDay: "No data yet",
+    correlations: [],
+  });
 
-  const topTopics = [
-    { topic: "Work Stress", count: 12, color: "#4A90D9" },
-    { topic: "Sleep Issues", count: 8, color: "#2C5F8A" },
-    { topic: "Anxiety", count: 7, color: "#7EC8A4" },
-    { topic: "Goal Setting", count: 5, color: "#F5A962" },
-    { topic: "Relationships", count: 4, color: "#4A90D9" },
-  ];
+  const fetchInsightsData = async () => {
+    setIsLoading(true);
+    setLoadError("");
+
+    try {
+      const daysParam = selectedPeriod === 'week' ? 7 : (selectedPeriod === 'month' ? 30 : 365);
+      const [moodRes, summaryRes, topicsRes, achievementsRes, patternsRes] = await Promise.all([
+        API.get(`/insights/mood?days=${daysParam}`),
+        API.get(`/insights/summary?days=${daysParam}`),
+        API.get("/insights/topics"),
+        API.get("/insights/achievements"),
+        API.get(`/insights/patterns?days=${daysParam}`),
+      ]);
+      const entries = moodRes.data;
+      
+      if (entries && entries.length > 0) {
+        const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const trends = entries.slice(-7).map(e => ({
+           day: daysOfWeek[new Date(e.date).getDay()],
+           mood: e.mood_score,
+           energy: e.energy_level,
+           stress: e.stress_level
+        }));
+        setMoodTrends(trends);
+        
+        const avgMood = (entries.reduce((acc, e) => acc + e.mood_score, 0) / entries.length).toFixed(1);
+        const avgEnergy = (entries.reduce((acc, e) => acc + e.energy_level, 0) / entries.length).toFixed(1);
+        const avgStress = (entries.reduce((acc, e) => acc + e.stress_level, 0) / entries.length).toFixed(1);
+        const uniqueCheckInDays = new Set(
+          entries.map((entry) => new Date(entry.date).toDateString()),
+        ).size;
+        const checkInRate = Math.round((uniqueCheckInDays / daysParam) * 100);
+        
+        setWeeklyStats([
+           { label: "Average Mood", value: avgMood, max: "10", icon: Heart, color: "#7EC8A4", progress: avgMood * 10 },
+           { label: "Energy Levels", value: avgEnergy, max: "10", icon: Activity, color: "#4A90D9", progress: avgEnergy * 10 },
+           { label: "Check-in Rate", value: checkInRate.toString(), max: "%", icon: CheckCircle2, color: "#2C5F8A", progress: checkInRate },
+           { label: "Stress Level", value: avgStress, max: "10", icon: Brain, color: "#F5A962", progress: avgStress * 10 },
+        ]);
+      } else {
+        setMoodTrends([]);
+        setWeeklyStats([
+          { label: "Average Mood", value: "0.0", max: "10", icon: Heart, color: "#7EC8A4", progress: 0 },
+          { label: "Energy Levels", value: "0.0", max: "10", icon: Activity, color: "#4A90D9", progress: 0 },
+          { label: "Check-in Rate", value: "0", max: "%", icon: CheckCircle2, color: "#2C5F8A", progress: 0 },
+          { label: "Stress Level", value: "0.0", max: "10", icon: Brain, color: "#F5A962", progress: 0 },
+        ]);
+      }
+
+      if (summaryRes.data?.insights) {
+        setInsights(
+          summaryRes.data.insights.map((item) => ({
+            title: item.title,
+            description: item.description,
+            trend: item.direction,
+            percentage: item.percentage,
+            icon:
+              item.metric === "mood"
+                ? TrendingUp
+                : item.metric === "energy"
+                ? Activity
+                : item.metric === "stress"
+                ? Brain
+                : Heart,
+            color:
+              item.metric === "mood"
+                ? "#7EC8A4"
+                : item.metric === "energy"
+                ? "#4A90D9"
+                : item.metric === "stress"
+                ? "#F5A962"
+                : "#E07C6B",
+          })),
+        );
+      }
+
+      if (topicsRes.data?.topics) {
+        setTopTopics(topicsRes.data.topics);
+      }
+
+      if (achievementsRes.data?.achievements) {
+        setAchievements(
+          achievementsRes.data.achievements.map((item) => ({
+            ...item,
+            icon:
+              item.key === "streak_7"
+                ? Flame
+                : item.key === "mood_30"
+                ? Award
+                : item.key === "morning_5"
+                ? CheckCircle2
+                : Target,
+          })),
+        );
+      }
+
+      if (patternsRes.data) {
+        setPatterns({
+          currentStreak: patternsRes.data.current_streak ?? 0,
+          longestStreak: patternsRes.data.longest_streak ?? 0,
+          bestDay: patternsRes.data.best_day || "No data yet",
+          correlations: patternsRes.data.correlations || [],
+        });
+      }
+    } catch (e) {
+      console.error("Insights fetch error", e);
+      setLoadError("We couldn't load your insights right now.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInsightsData();
+  }, [selectedPeriod]);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -232,53 +319,68 @@ export default function Insights() {
             transition={{ duration: 0.4, delay: 0.2 }}
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"
           >
-            {insights.map((insight, index) => (
-              <motion.div
-                key={insight.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.25 + index * 0.05 }}
-                className="bg-white p-6"
-                style={{
-                  borderRadius: "20px",
-                  boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
-                }}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: `${insight.color}15` }}
-                  >
-                    <insight.icon size={24} style={{ color: insight.color }} />
-                  </div>
-                  <div
-                    className="px-3 py-1 text-sm font-medium"
-                    style={{
-                      background: "rgba(126, 200, 164, 0.1)",
-                      color: "#7EC8A4",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    {insight.percentage}
-                  </div>
-                </div>
-                <h3
-                  className="text-lg mb-2"
-                  style={{ color: "var(--aura-text-primary)" }}
-                >
-                  {insight.title}
-                </h3>
-                <p
-                  className="text-sm"
+            {isLoading || loadError ? (
+              <div className="md:col-span-2 xl:col-span-4">
+                <StateCard
+                  title={isLoading ? "Loading your insights" : "Insights are temporarily unavailable"}
+                  description={
+                    isLoading
+                      ? "We're building your latest mood and activity summary."
+                      : loadError
+                  }
+                  actionLabel={loadError ? "Try Again" : ""}
+                  onAction={loadError ? fetchInsightsData : undefined}
+                />
+              </div>
+            ) : (
+              insights.map((insight, index) => (
+                <motion.div
+                  key={insight.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.25 + index * 0.05 }}
+                  className="bg-white p-6"
                   style={{
-                    color: "var(--aura-text-secondary)",
-                    lineHeight: "1.6",
+                    borderRadius: "20px",
+                    boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
                   }}
                 >
-                  {insight.description}
-                </p>
-              </motion.div>
-            ))}
+                  <div className="flex items-start justify-between mb-4">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center"
+                      style={{ background: `${insight.color}15` }}
+                    >
+                      <insight.icon size={24} style={{ color: insight.color }} />
+                    </div>
+                    <div
+                      className="px-3 py-1 text-sm font-medium"
+                      style={{
+                        background: "rgba(126, 200, 164, 0.1)",
+                        color: "#7EC8A4",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      {insight.percentage}
+                    </div>
+                  </div>
+                  <h3
+                    className="text-lg mb-2"
+                    style={{ color: "var(--aura-text-primary)" }}
+                  >
+                    {insight.title}
+                  </h3>
+                  <p
+                    className="text-sm"
+                    style={{
+                      color: "var(--aura-text-secondary)",
+                      lineHeight: "1.6",
+                    }}
+                  >
+                    {insight.description}
+                  </p>
+                </motion.div>
+              ))
+            )}
           </motion.div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -326,34 +428,40 @@ export default function Insights() {
                 </div>
 
                 <div className="absolute inset-0 flex items-end justify-between gap-4 px-2">
-                  {moodTrends.map((data, index) => (
-                    <div
-                      key={data.day}
-                      className="flex-1 flex flex-col items-center gap-3"
-                      style={{ height: "100%" }}
-                    >
-                      <div className="flex-1 flex items-end justify-center gap-1 w-full">
-                        <TrendBar
-                          value={data.mood}
-                          delay={0.4 + index * 0.05}
-                          color="#7EC8A4"
-                        />
-                        <TrendBar
-                          value={data.energy}
-                          delay={0.45 + index * 0.05}
-                          color="#4A90D9"
-                        />
-                        <TrendBar
-                          value={data.stress}
-                          delay={0.5 + index * 0.05}
-                          color="#E07C6B"
-                        />
+                  {moodTrends.length > 0 ? (
+                    moodTrends.map((data, index) => (
+                      <div
+                        key={data.day}
+                        className="flex-1 flex flex-col items-center gap-3"
+                        style={{ height: "100%" }}
+                      >
+                        <div className="flex-1 flex items-end justify-center gap-1 w-full">
+                          <TrendBar
+                            value={data.mood}
+                            delay={0.4 + index * 0.05}
+                            color="#7EC8A4"
+                          />
+                          <TrendBar
+                            value={data.energy}
+                            delay={0.45 + index * 0.05}
+                            color="#4A90D9"
+                          />
+                          <TrendBar
+                            value={data.stress}
+                            delay={0.5 + index * 0.05}
+                            color="#E07C6B"
+                          />
+                        </div>
+                        <span className="text-xs" style={{ color: "#9BAABB" }}>
+                          {data.day}
+                        </span>
                       </div>
-                      <span className="text-xs" style={{ color: "#9BAABB" }}>
-                        {data.day}
-                      </span>
+                    ))
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                      Complete a few mood check-ins to unlock trend charts.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -441,6 +549,74 @@ export default function Insights() {
                   ))}
                 </div>
               </Card>
+
+              <Card title="Patterns and Correlations">
+                <div className="space-y-4">
+                  <div
+                    className="p-4"
+                    style={{ background: "#F7FAFD", borderRadius: "14px" }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                        Current Streak
+                      </span>
+                      <span style={{ color: "#F5A962" }}>
+                        <Flame size={16} />
+                      </span>
+                    </div>
+                    <div className="text-lg" style={{ color: "var(--aura-text-primary)" }}>
+                      {patterns.currentStreak} days
+                    </div>
+                  </div>
+
+                  <div
+                    className="p-4"
+                    style={{ background: "#F7FAFD", borderRadius: "14px" }}
+                  >
+                    <div className="text-sm mb-1" style={{ color: "var(--aura-text-secondary)" }}>
+                      Longest Streak
+                    </div>
+                    <div className="text-lg" style={{ color: "var(--aura-text-primary)" }}>
+                      {patterns.longestStreak} days
+                    </div>
+                  </div>
+
+                  <div
+                    className="p-4"
+                    style={{ background: "#F7FAFD", borderRadius: "14px" }}
+                  >
+                    <div className="text-sm mb-1" style={{ color: "var(--aura-text-secondary)" }}>
+                      Best Check-In Day
+                    </div>
+                    <div className="text-lg" style={{ color: "var(--aura-text-primary)" }}>
+                      {patterns.bestDay}
+                    </div>
+                  </div>
+
+                  {patterns.correlations.map((item) => (
+                    <div
+                      key={item.label}
+                      className="p-4"
+                      style={{ background: "#F7FAFD", borderRadius: "14px" }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm" style={{ color: "var(--aura-text-primary)" }}>
+                          {item.label}
+                        </span>
+                        <span className="text-sm" style={{ color: "#4A90D9" }}>
+                          {item.score}%
+                        </span>
+                      </div>
+                      <div className="text-xs mb-1" style={{ color: "#4A90D9" }}>
+                        {item.summary}
+                      </div>
+                      <div className="text-xs" style={{ color: "var(--aura-text-secondary)" }}>
+                        {item.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
             </motion.div>
           </div>
 
@@ -515,6 +691,14 @@ export default function Insights() {
                   >
                     {achievement.description}
                   </p>
+                  {!achievement.earned && (
+                    <div
+                      className="mt-3 text-xs"
+                      style={{ color: "var(--aura-text-secondary)" }}
+                    >
+                      {achievement.progress}/{achievement.target}
+                    </div>
+                  )}
                   {achievement.earned && (
                     <div
                       className="mt-3 text-xs font-medium"
@@ -572,6 +756,34 @@ function Card({ title, children }) {
         {title}
       </h3>
       {children}
+    </div>
+  );
+}
+
+function StateCard({ title, description, actionLabel, onAction }) {
+  return (
+    <div
+      className="bg-white p-10 text-center"
+      style={{
+        borderRadius: "20px",
+        boxShadow: "0 4px 24px rgba(44, 95, 138, 0.08)",
+      }}
+    >
+      <h3 className="text-xl mb-2" style={{ color: "var(--aura-text-primary)" }}>
+        {title}
+      </h3>
+      <p className="text-base mb-5" style={{ color: "var(--aura-text-secondary)" }}>
+        {description}
+      </p>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="px-5 py-2.5 text-white hover:opacity-90 transition-all"
+          style={{ background: "#4A90D9", borderRadius: "12px" }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

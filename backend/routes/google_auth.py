@@ -90,7 +90,10 @@ async def google_login(request: Request, db: Session = Depends(get_db)):
                     "name": user.name,
                     "username": user.username,
                     "email": user.email,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
                     "picture": user.picture,
+                    "has_password": bool(user.password),
+                    "auth_provider": "google" if user.google_id and not user.password else "local",
                 },
                 "token": jwt_token
             }

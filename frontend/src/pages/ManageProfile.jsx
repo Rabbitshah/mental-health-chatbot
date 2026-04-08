@@ -30,6 +30,18 @@ export default function ManageProfile() {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [memberSince, setMemberSince] = useState("");
+  const [hasPassword, setHasPassword] = useState(true);
+  const [authProvider, setAuthProvider] = useState("local");
+  const [statusMessage, setStatusMessage] = useState(null);
+  const [language, setLanguage] = useState("English");
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const [privacySummary, setPrivacySummary] = useState({
+    sessions: 0,
+    messages: 0,
+    mood_entries: 0,
+    archived_sessions: 0,
+    pinned_sessions: 0,
+  });
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -38,6 +50,12 @@ export default function ManageProfile() {
         const user = JSON.parse(userStr);
         if (user?.name) setFullName(user.name);
         if (user?.email) setEmail(user.email);
+        setHasPassword(user?.has_password ?? !user?.picture);
+        setAuthProvider(user?.auth_provider || (user?.picture ? "google" : "local"));
+        setDarkMode(Boolean(user?.dark_mode));
+        setEmailNotifications(user?.email_notifications ?? true);
+        setPushNotifications(user?.push_notifications ?? true);
+        setLanguage(user?.language || "English");
         if (user.created_at) {
           const date = new Date(user.created_at);
           setMemberSince(date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }));
@@ -48,26 +66,47 @@ export default function ManageProfile() {
         console.error("Failed to parse user data", e);
       }
     }
+
+    API.get("/privacy-summary")
+      .then((res) => {
+        setPrivacySummary(res.data);
+      })
+      .catch((error) => {
+        console.error("Failed to load privacy summary", error);
+      });
   }, []);
 
   const handleProfileUpdate = async () => {
-    if (!profilePassword) {
+    setStatusMessage(null);
+    if (hasPassword && !profilePassword) {
       alert("Please enter your current password to verify identity.");
       return;
     }
     setIsUpdatingProfile(true);
     try {
-      const res = await API.put("/auth/profile", {
+      const res = await API.put("/profile", {
         name: fullName,
         email: email,
         current_password: profilePassword
       });
       alert("Profile updated successfully!");
-      // Update localStorage
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      localStorage.setItem("user", JSON.stringify({ ...user, name: fullName, email: email }));
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setHasPassword(res.data.user?.has_password ?? hasPassword);
+      setAuthProvider(res.data.user?.auth_provider || authProvider);
       setProfilePassword("");
+      setDarkMode(Boolean(res.data.user?.dark_mode));
+      setEmailNotifications(res.data.user?.email_notifications ?? true);
+      setPushNotifications(res.data.user?.push_notifications ?? true);
+      setLanguage(res.data.user?.language || "English");
+      setStatusMessage({
+        type: "success",
+        text: "Profile details were saved successfully.",
+      });
     } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to update profile.",
+      });
       alert(error.response?.data?.detail || "Failed to update profile");
     } finally {
       setIsUpdatingProfile(false);
@@ -75,28 +114,82 @@ export default function ManageProfile() {
   };
 
   const handlePasswordChange = async () => {
+    setStatusMessage(null);
+    if (hasPassword && !currentPassword) {
+      alert("Please enter your current password.");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       alert("New passwords do not match");
       return;
     }
     try {
-      await API.put("/auth/profile", {
+      const res = await API.put("/profile", {
         password: newPassword,
         current_password: currentPassword
       });
       alert("Password changed successfully!");
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setHasPassword(res.data.user?.has_password ?? true);
+      setAuthProvider(res.data.user?.auth_provider || authProvider);
+      setDarkMode(Boolean(res.data.user?.dark_mode));
+      setEmailNotifications(res.data.user?.email_notifications ?? true);
+      setPushNotifications(res.data.user?.push_notifications ?? true);
+      setLanguage(res.data.user?.language || "English");
       setShowPasswordForm(false);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setStatusMessage({
+        type: "success",
+        text: hasPassword
+          ? "Your password was updated successfully."
+          : "A local password was added successfully.",
+      });
     } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to change password.",
+      });
       alert(error.response?.data?.detail || "Failed to change password");
     }
   };
 
-  const handleExportData = async () => {
+  const handlePreferenceSave = async () => {
+    setStatusMessage(null);
+    setIsSavingPreferences(true);
     try {
-      const res = await API.get("/auth/export");
+      const res = await API.put("/profile", {
+        dark_mode: darkMode,
+        email_notifications: emailNotifications,
+        push_notifications: pushNotifications,
+        language,
+        current_password: hasPassword ? profilePassword || currentPassword : undefined,
+      });
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setDarkMode(Boolean(res.data.user?.dark_mode));
+      setEmailNotifications(res.data.user?.email_notifications ?? true);
+      setPushNotifications(res.data.user?.push_notifications ?? true);
+      setLanguage(res.data.user?.language || "English");
+      setStatusMessage({
+        type: "success",
+        text: "Preferences were saved successfully.",
+      });
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to save preferences.",
+      });
+      alert(error.response?.data?.detail || "Failed to save preferences");
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setStatusMessage(null);
+    try {
+      const res = await API.get("/export");
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -105,23 +198,84 @@ export default function ManageProfile() {
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
+      setStatusMessage({
+        type: "success",
+        text: "Your data export is ready and has started downloading.",
+      });
     } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: "We couldn't export your data right now.",
+      });
       alert("Failed to export data");
     }
   };
 
   const handleDeleteHistory = () => {
+    setStatusMessage(null);
     if (
       confirm(
         "Are you sure you want to delete all conversation history? This cannot be undone.",
       )
     ) {
-      alert("Conversation history deleted.");
+      API.delete("/history/")
+        .then(() => {
+          alert("Conversation history deleted.");
+          setPrivacySummary((current) => ({
+            ...current,
+            sessions: 0,
+            messages: 0,
+            archived_sessions: 0,
+            pinned_sessions: 0,
+          }));
+          setStatusMessage({
+            type: "success",
+            text: "All conversation history has been deleted.",
+          });
+        })
+        .catch((error) => {
+          setStatusMessage({
+            type: "error",
+            text: error.response?.data?.detail || "Failed to delete conversation history.",
+          });
+          alert(error.response?.data?.detail || "Failed to delete conversation history");
+        });
+    }
+  };
+
+  const handleResetPreferences = async () => {
+    setStatusMessage(null);
+    setIsSavingPreferences(true);
+    try {
+      const res = await API.put("/profile", {
+        dark_mode: false,
+        email_notifications: true,
+        push_notifications: true,
+        language: "English",
+      });
+      localStorage.setItem("user", JSON.stringify(res.data.user));
+      setDarkMode(false);
+      setEmailNotifications(true);
+      setPushNotifications(true);
+      setLanguage("English");
+      setStatusMessage({
+        type: "success",
+        text: "Preferences were reset to their defaults.",
+      });
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to reset preferences.",
+      });
+      alert(error.response?.data?.detail || "Failed to reset preferences");
+    } finally {
+      setIsSavingPreferences(false);
     }
   };
 
   const handleDeleteAccount = async () => {
-    if (!profilePassword) {
+    setStatusMessage(null);
+    if (hasPassword && !profilePassword) {
       alert("Please enter your current password to confirm account deletion.");
       return;
     }
@@ -132,7 +286,7 @@ export default function ManageProfile() {
 
     setIsDeleting(true);
     try {
-      await API.delete("/auth/profile", {
+      await API.delete("/profile", {
         data: { current_password: profilePassword }
       });
       alert("Your account has been deleted.");
@@ -211,6 +365,31 @@ export default function ManageProfile() {
               </p>
             </motion.div>
 
+            {statusMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4"
+                style={{
+                  borderRadius: "14px",
+                  background:
+                    statusMessage.type === "success"
+                      ? "rgba(126, 200, 164, 0.12)"
+                      : "rgba(224, 124, 107, 0.12)",
+                  border:
+                    statusMessage.type === "success"
+                      ? "1px solid rgba(126, 200, 164, 0.3)"
+                      : "1px solid rgba(224, 124, 107, 0.3)",
+                  color:
+                    statusMessage.type === "success"
+                      ? "#2F7A57"
+                      : "#C15A4B",
+                }}
+              >
+                {statusMessage.text}
+              </motion.div>
+            )}
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -286,21 +465,37 @@ export default function ManageProfile() {
 
                   <div className="pt-4 border-t border-gray-100 mt-6">
                     <label className="block text-sm mb-2" style={{ color: "var(--aura-text-secondary)" }}>
-                      Current Password (Required to save changes)
+                      {hasPassword
+                        ? "Current Password (Required to save changes)"
+                        : "No local password is required for this Google account"}
                     </label>
                     <div className="flex gap-3">
-                      <input
-                        type="password"
-                        placeholder="Enter password to verify"
-                        value={profilePassword}
-                        onChange={(e) => setProfilePassword(e.target.value)}
-                        className="flex-1 px-4 py-3 focus:outline-none focus:ring-2 transition-all"
-                        style={{
-                          borderRadius: "12px",
-                          border: "1px solid #D0DCE8",
-                          color: "var(--aura-text-primary)",
-                        }}
-                      />
+                      {hasPassword ? (
+                        <input
+                          type="password"
+                          placeholder="Enter password to verify"
+                          value={profilePassword}
+                          onChange={(e) => setProfilePassword(e.target.value)}
+                          className="flex-1 px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                          style={{
+                            borderRadius: "12px",
+                            border: "1px solid #D0DCE8",
+                            color: "var(--aura-text-primary)",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="flex-1 px-4 py-3"
+                          style={{
+                            borderRadius: "12px",
+                            border: "1px solid #D0DCE8",
+                            color: "var(--aura-text-secondary)",
+                            background: "#F7FAFD",
+                          }}
+                        >
+                          Signed in with Google. Profile changes can be saved without a local password.
+                        </div>
+                      )}
                       <button
                         onClick={handleProfileUpdate}
                         disabled={isUpdatingProfile}
@@ -349,13 +544,15 @@ export default function ManageProfile() {
                     <Lock size={20} style={{ color: "#4A90D9" }} />
                     <div className="flex-1">
                       <div style={{ color: "var(--aura-text-primary)" }}>
-                        Change Password
+                        {hasPassword ? "Change Password" : "Set Local Password"}
                       </div>
                       <div
                         className="text-sm"
                         style={{ color: "var(--aura-text-secondary)" }}
                       >
-                        Update your password regularly for security
+                        {hasPassword
+                          ? "Update your password regularly for security"
+                          : "Add a local password if you want to sign in without Google"}
                       </div>
                     </div>
                   </button>
@@ -366,18 +563,20 @@ export default function ManageProfile() {
                       animate={{ opacity: 1, height: "auto" }}
                       className="mt-4 pl-11 space-y-3"
                     >
-                      <input
-                        type="password"
-                        placeholder="Current password"
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
-                        style={{
-                          borderRadius: "12px",
-                          border: "1px solid #D0DCE8",
-                          color: "var(--aura-text-primary)",
-                        }}
-                      />
+                      {hasPassword && (
+                        <input
+                          type="password"
+                          placeholder="Current password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="w-full px-4 py-3 focus:outline-none focus:ring-2 transition-all"
+                          style={{
+                            borderRadius: "12px",
+                            border: "1px solid #D0DCE8",
+                            color: "var(--aura-text-primary)",
+                          }}
+                        />
+                      )}
                       <input
                         type="password"
                         placeholder="New password"
@@ -457,15 +656,15 @@ export default function ManageProfile() {
                       className="text-sm"
                       style={{ color: "var(--aura-text-secondary)" }}
                     >
-                      Connected
+                      {authProvider === "google" ? "Connected" : "Available"}
                     </div>
                   </div>
-                  <button
-                    className="text-sm hover:underline"
-                    style={{ color: "#E07C6B" }}
+                  <span
+                    className="text-sm"
+                    style={{ color: "#4A90D9" }}
                   >
-                    Disconnect
-                  </button>
+                    {authProvider === "google" ? "Primary sign-in" : "Not linked"}
+                  </span>
                 </div>
               </div>
             </motion.div>
@@ -519,11 +718,13 @@ export default function ManageProfile() {
                     <div
                       className="text-sm"
                       style={{ color: "var(--aura-text-secondary)" }}
-                    >
-                      Choose your preferred language
-                    </div>
+                  >
+                    Choose your preferred language
+                  </div>
                   </div>
                   <select
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
                     className="px-4 py-2 focus:outline-none focus:ring-2 transition-all"
                     style={{
                       borderRadius: "8px",
@@ -536,6 +737,37 @@ export default function ManageProfile() {
                     <option>French</option>
                     <option>German</option>
                   </select>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-4 border-t border-gray-100">
+                  <div
+                    className="text-sm"
+                    style={{ color: "var(--aura-text-secondary)" }}
+                  >
+                    Preferences are saved to your account and will be available the next time you sign in.
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleResetPreferences}
+                      disabled={isSavingPreferences}
+                      className="px-4 py-2.5 transition-all disabled:opacity-50"
+                      style={{
+                        borderRadius: "10px",
+                        border: "1px solid #D0DCE8",
+                        color: "var(--aura-text-secondary)",
+                      }}
+                    >
+                      Reset Defaults
+                    </button>
+                    <button
+                      onClick={handlePreferenceSave}
+                      disabled={isSavingPreferences}
+                      className="px-6 py-2.5 text-white hover:opacity-90 transition-all disabled:opacity-50"
+                      style={{ background: "#4A90D9", borderRadius: "10px" }}
+                    >
+                      {isSavingPreferences ? "Saving..." : "Save Preferences"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -558,6 +790,15 @@ export default function ManageProfile() {
               </h2>
 
               <div className="space-y-4">
+                <div
+                  className="grid grid-cols-2 md:grid-cols-4 gap-3"
+                >
+                  <PrivacyMetric label="Sessions" value={privacySummary.sessions} />
+                  <PrivacyMetric label="Messages" value={privacySummary.messages} />
+                  <PrivacyMetric label="Mood Entries" value={privacySummary.mood_entries} />
+                  <PrivacyMetric label="Archived" value={privacySummary.archived_sessions} />
+                </div>
+
                 <button
                   onClick={handleExportData}
                   className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
@@ -572,10 +813,25 @@ export default function ManageProfile() {
                       className="text-sm"
                       style={{ color: "var(--aura-text-secondary)" }}
                     >
-                      Download a copy of your conversations and data
+                      Download your conversations, preferences, and wellness history
                     </div>
                   </div>
                 </button>
+
+                <div
+                  className="p-4"
+                  style={{ borderRadius: "12px", background: "#F7FAFD" }}
+                >
+                  <div style={{ color: "var(--aura-text-primary)" }}>
+                    Privacy Summary
+                  </div>
+                  <div
+                    className="text-sm mt-1"
+                    style={{ color: "var(--aura-text-secondary)" }}
+                  >
+                    {privacySummary.pinned_sessions} pinned conversations and {privacySummary.archived_sessions} archived conversations are currently stored in your account.
+                  </div>
+                </div>
 
                 <button
                   onClick={handleDeleteHistory}
@@ -692,6 +948,22 @@ export default function ManageProfile() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function PrivacyMetric({ label, value }) {
+  return (
+    <div
+      className="p-4"
+      style={{ borderRadius: "12px", background: "#F7FAFD" }}
+    >
+      <div className="text-2xl" style={{ color: "var(--aura-text-primary)" }}>
+        {value}
+      </div>
+      <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+        {label}
+      </div>
     </div>
   );
 }

@@ -3,10 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   MessageCircle,
   Send,
-  Paperclip,
-  Smile,
-  Bell,
-  HelpCircle,
+  RefreshCw,
+  Copy,
+  Share2,
 } from "lucide-react";
 import { motion } from "motion/react";
 import ReactMarkdown from "react-markdown";
@@ -21,6 +20,9 @@ export default function Chatbot() {
   const [isThinking, setIsThinking] = useState(false);
   const [userName, setUserName] = useState("Jane Doe");
   const messagesEndRef = useRef(null);
+  const draftStorageKey = sessionId
+    ? `aurachat-draft-${sessionId}`
+    : "aurachat-draft-new";
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -37,6 +39,13 @@ export default function Chatbot() {
       } catch {
         // Ignore malformed local user payload and keep defaults.
       }
+    }
+
+    const savedDraft = localStorage.getItem(draftStorageKey);
+    if (savedDraft) {
+      setInputValue(savedDraft);
+    } else {
+      setInputValue("");
     }
     
     // Fetch history if sessionId is in URL
@@ -59,11 +68,70 @@ export default function Chatbot() {
     } else {
       setMessages([]);
     }
-  }, [navigate, sessionId]);
+  }, [draftStorageKey, navigate, sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
+
+  useEffect(() => {
+    if (inputValue.trim()) {
+      localStorage.setItem(draftStorageKey, inputValue);
+    } else {
+      localStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey, inputValue]);
+
+  const streamAssistantMessage = async (messageId, fullText) => {
+    const chunkSize = 12;
+    const delayMs = 18;
+
+    for (let index = chunkSize; index <= fullText.length; index += chunkSize) {
+      const partialText = fullText.slice(0, index);
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? { ...message, text: partialText } : message,
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId ? { ...message, text: fullText } : message,
+      ),
+    );
+  };
+
+  const sendPrompt = async (prompt) => {
+    const payload = { message: prompt };
+    if (sessionId) {
+      payload.session_id = parseInt(sessionId, 10);
+    }
+
+    const res = await API.post("/chat", payload);
+
+    if (!sessionId && res.data.session_id) {
+      navigate(`/chat/${res.data.session_id}`, { replace: true });
+    }
+
+    const aiText =
+      res.data?.response ||
+      res.data?.reply ||
+      "I hear you. I am here to listen and support you.";
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage = {
+      id: aiMessageId,
+      text: "",
+      sender: "ai",
+      timestamp: new Date(),
+      isError: false,
+      promptText: prompt,
+    };
+    setMessages((prev) => [...prev, aiMessage]);
+    setIsThinking(false);
+    await streamAssistantMessage(aiMessageId, aiText);
+  };
 
   const handleSend = async () => {
     if (!inputValue.trim()) return;
@@ -78,31 +146,11 @@ export default function Chatbot() {
     setMessages((prev) => [...prev, userMessage]);
     const prompt = inputValue;
     setInputValue("");
+    localStorage.removeItem(draftStorageKey);
     setIsThinking(true);
 
     try {
-      const payload = { message: prompt };
-      if (sessionId) {
-        payload.session_id = parseInt(sessionId, 10);
-      }
-      
-      const res = await API.post("/chat", payload);
-      
-      if (!sessionId && res.data.session_id) {
-        // Replace URL dynamically so subsequent messages use this session without reloading
-        navigate(`/chat/${res.data.session_id}`, { replace: true });
-      }
-
-      const aiMessage = {
-        id: (Date.now() + 1).toString(),
-        text:
-          res.data?.response ||
-          res.data?.reply ||
-          "I hear you. I am here to listen and support you.",
-        sender: "ai",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMessage]);
+      await sendPrompt(prompt);
     } catch (error) {
       let errorMsg = "I could not connect right now. Please try again in a moment.";
       if (error.response?.status === 429) {
@@ -114,11 +162,73 @@ export default function Chatbot() {
         text: errorMsg,
         sender: "ai",
         timestamp: new Date(),
+        isError: true,
+        promptText: prompt,
       };
       setMessages((prev) => [...prev, aiMessage]);
     } finally {
       setIsThinking(false);
     }
+  };
+
+  const handleRetryOrRegenerate = async (promptText, messageId) => {
+    if (!promptText || isThinking) return;
+
+    setMessages((prev) => prev.filter((message) => message.id !== messageId));
+    setIsThinking(true);
+
+    try {
+      await sendPrompt(promptText);
+    } catch (error) {
+      let errorMsg = "I could not connect right now. Please try again in a moment.";
+      if (error.response?.status === 429) {
+        errorMsg = "You're sending messages too quickly. Please pause for a moment to let me catch up!";
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: errorMsg,
+          sender: "ai",
+          timestamp: new Date(),
+          isError: true,
+          promptText,
+        },
+      ]);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const handleCopyMessage = async (text) => {
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error("Failed to copy message", error);
+      alert("Copy is not available right now.");
+    }
+  };
+
+  const handleShareMessage = async (text) => {
+    if (!text) return;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "AuraChat message",
+          text,
+        });
+      } catch (error) {
+        console.error("Share cancelled or unavailable", error);
+      }
+      return;
+    }
+
+    await handleCopyMessage(text);
+    alert("Sharing is not available here, so the message was copied instead.");
   };
 
   const handleKeyDown = (e) => {
@@ -170,15 +280,6 @@ export default function Chatbot() {
               ></div>
               <span className="text-sm">AI is ready</span>
             </div>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-              <Bell size={20} style={{ color: "var(--aura-text-secondary)" }} />
-            </button>
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-              <HelpCircle
-                size={20}
-                style={{ color: "var(--aura-text-secondary)" }}
-              />
-            </button>
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs cursor-pointer"
               style={{ background: "#4A90D9", color: "white" }}
@@ -197,7 +298,20 @@ export default function Chatbot() {
           ) : (
             <div className="space-y-6 max-w-4xl mx-auto">
               {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  isLatestAiMessage={
+                    message.sender === "ai" &&
+                    messages
+                      .filter((item) => item.sender === "ai")
+                      .at(-1)?.id === message.id
+                  }
+                  onRetryOrRegenerate={handleRetryOrRegenerate}
+                  isThinking={isThinking}
+                  onCopyMessage={handleCopyMessage}
+                  onShareMessage={handleShareMessage}
+                />
               ))}
               {isThinking && <ThinkingIndicator />}
               <div ref={messagesEndRef} />
@@ -211,7 +325,7 @@ export default function Chatbot() {
         >
           <div className="max-w-4xl mx-auto">
             <div className="flex gap-3 items-end">
-              <div className="flex-1 relative">
+              <div className="flex-1">
                 <textarea
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
@@ -227,21 +341,12 @@ export default function Chatbot() {
                   }}
                   rows={1}
                 />
-
-                <div className="absolute right-3 bottom-3 flex gap-2">
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-                    <Paperclip
-                      size={18}
-                      style={{ color: "var(--aura-text-secondary)" }}
-                    />
-                  </button>
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-                    <Smile
-                      size={18}
-                      style={{ color: "var(--aura-text-secondary)" }}
-                    />
-                  </button>
-                </div>
+                <p
+                  className="mt-2 text-xs"
+                  style={{ color: "var(--aura-text-secondary)" }}
+                >
+                  Text chat is available right now. Attachments and reactions will be added in a later update.
+                </p>
               </div>
 
               <button
@@ -316,7 +421,14 @@ function EmptyState({ onSuggestionClick, suggestions }) {
   );
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({
+  message,
+  isLatestAiMessage,
+  onRetryOrRegenerate,
+  isThinking,
+  onCopyMessage,
+  onShareMessage,
+}) {
   const isUser = message.sender === "user";
 
   return (
@@ -350,21 +462,22 @@ function MessageBubble({ message }) {
           {isUser ? (
             <p className="leading-relaxed whitespace-pre-wrap flex flex-col">{message.text}</p>
           ) : (
-            <ReactMarkdown 
-              className="leading-relaxed flex flex-col gap-2"
-              components={{
-                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-2" {...props} />,
-                ol: ({node, ...props}) => <ol className="list-decimal ml-5 mb-2" {...props} />,
-                li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
-                h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
-                h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
-                strong: ({node, ...props}) => <strong className="font-bold" {...props} />
-              }}
-            >
-              {message.text}
-            </ReactMarkdown>
+            <div className="leading-relaxed flex flex-col gap-2">
+              <ReactMarkdown
+                components={{
+                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                  ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-2" {...props} />,
+                  ol: ({node, ...props}) => <ol className="list-decimal ml-5 mb-2" {...props} />,
+                  li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                  h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
+                  h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
+                  h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
+                  strong: ({node, ...props}) => <strong className="font-bold" {...props} />
+                }}
+              >
+                {message.text}
+              </ReactMarkdown>
+            </div>
           )}
         </div>
         <div
@@ -376,6 +489,48 @@ function MessageBubble({ message }) {
             minute: "2-digit",
           })}
         </div>
+        {!isUser && message.promptText && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() =>
+                onRetryOrRegenerate(message.promptText, message.id)
+              }
+              disabled={isThinking}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-full transition-all disabled:opacity-50"
+              style={{
+                background: "rgba(74, 144, 217, 0.08)",
+                color: "#4A90D9",
+              }}
+            >
+              <RefreshCw size={12} />
+              <span>{message.isError ? "Retry" : isLatestAiMessage ? "Regenerate" : "Retry Prompt"}</span>
+            </button>
+            <button
+              onClick={() => onCopyMessage(message.text)}
+              disabled={isThinking || !message.text}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-full transition-all disabled:opacity-50"
+              style={{
+                background: "rgba(126, 200, 164, 0.1)",
+                color: "#2C5F8A",
+              }}
+            >
+              <Copy size={12} />
+              <span>Copy</span>
+            </button>
+            <button
+              onClick={() => onShareMessage(message.text)}
+              disabled={isThinking || !message.text}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded-full transition-all disabled:opacity-50"
+              style={{
+                background: "rgba(245, 169, 98, 0.12)",
+                color: "#8A5A2B",
+              }}
+            >
+              <Share2 size={12} />
+              <span>Share</span>
+            </button>
+          </div>
+        )}
       </motion.div>
     </div>
   );

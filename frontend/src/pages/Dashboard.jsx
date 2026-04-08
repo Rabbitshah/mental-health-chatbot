@@ -22,6 +22,19 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState("Alex");
   const [conversations, setConversations] = useState([]);
+  const [latestConversation, setLatestConversation] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [recommendations, setRecommendations] = useState({
+    featured: {
+      category: "Meditation",
+      title: "5-Minute Breathing Reset",
+      description: "Quick guided meditation for stress relief",
+    },
+    items: [
+      { type: "article", title: "Understanding Anxiety", meta: "3 min read" },
+    ],
+  });
   const [isMoodModalOpen, setIsMoodModalOpen] = useState(false);
   const [stats, setStats] = useState([
     { number: "-", label: "DAY STREAK", icon: Flame, color: "#F5A962" },
@@ -44,6 +57,62 @@ export default function Dashboard() {
 
   const [moodTrend, setMoodTrend] = useState([]);
 
+  const fetchDashboardData = async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
+    setLoadError("");
+
+    try {
+      const [historyRes, statsRes, moodRes, recommendationsRes] = await Promise.all([
+        API.get("/history/"),
+        API.get("/insights/stats"),
+        API.get("/insights/mood?days=7"),
+        API.get("/insights/recommendations"),
+      ]);
+
+      setConversations(historyRes.data.slice(0, 3).map(chat => ({
+        id: chat.id,
+        title: chat.title,
+        preview: chat.preview,
+        tag: chat.tag || "General",
+        time: new Date(chat.created_at).toLocaleDateString(),
+        icon: MessageCircle,
+        color: "#4A90D9"
+      })));
+      setLatestConversation(
+        historyRes.data.length > 0
+          ? {
+              id: historyRes.data[0].id,
+              title: historyRes.data[0].title,
+            }
+          : null,
+      );
+      setRecommendations(recommendationsRes.data);
+
+      const data = statsRes.data;
+      setStats([
+        { number: data.day_streak.toString(), label: "DAY STREAK", icon: Flame, color: "#F5A962" },
+        { number: data.total_sessions.toString(), label: "TOTAL SESSIONS", icon: MessageCircle, color: "#4A90D9" },
+        { number: Math.round(data.mood_score_percent) + "%", label: "MOOD SCORE", icon: ArrowUp, color: "#7EC8A4", showProgress: true, progressTarget: data.mood_score_percent / 100 },
+        { number: data.journals.toString(), label: "JOURNALS", icon: Book, color: "#4A90D9" },
+      ]);
+
+      const days = ["S", "M", "T", "W", "T", "F", "S"];
+      const trend = moodRes.data.map(entry => ({
+        day: days[new Date(entry.date).getDay()],
+        value: entry.mood_score * 10,
+        color: entry.mood_score > 7 ? "#7EC8A4" : entry.mood_score > 4 ? "#4A90D9" : "#E07C6B"
+      }));
+      setMoodTrend(trend);
+    } catch (e) {
+      console.error("Dashboard fetch error", e);
+      setLoadError("We couldn't load your latest dashboard data right now.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     const userStr = localStorage.getItem("user");
     if (userStr) {
@@ -52,47 +121,7 @@ export default function Dashboard() {
         if (user?.name) setUserName(user.name.split(" ")[0]);
       } catch (e) {}
     }
-
-    const fetchData = async () => {
-      try {
-        const [historyRes, statsRes, moodRes] = await Promise.all([
-          API.get("/history/"),
-          API.get("/insights/stats"),
-          API.get("/insights/mood?days=7")
-        ]);
-        
-        setConversations(historyRes.data.slice(0, 3).map(chat => ({
-          id: chat.id,
-          title: chat.title,
-          preview: chat.preview,
-          tag: chat.tag || "General",
-          time: new Date(chat.created_at).toLocaleDateString(),
-          icon: MessageCircle,
-          color: "#4A90D9"
-        })));
-        
-        const data = statsRes.data;
-        setStats([
-          { number: data.day_streak.toString(), label: "DAY STREAK", icon: Flame, color: "#F5A962" },
-          { number: data.total_sessions.toString(), label: "TOTAL SESSIONS", icon: MessageCircle, color: "#4A90D9" },
-          { number: Math.round(data.mood_score_percent) + "%", label: "MOOD SCORE", icon: ArrowUp, color: "#7EC8A4", showProgress: true, progressTarget: data.mood_score_percent / 100 },
-          { number: data.journals.toString(), label: "JOURNALS", icon: Book, color: "#4A90D9" },
-        ]);
-
-        // Process mood trend
-        const days = ["S", "M", "T", "W", "T", "F", "S"];
-        const trend = moodRes.data.map(entry => ({
-          day: days[new Date(entry.date).getDay()],
-          value: entry.mood_score * 10,
-          color: entry.mood_score > 7 ? "#7EC8A4" : entry.mood_score > 4 ? "#4A90D9" : "#E07C6B"
-        }));
-        setMoodTrend(trend);
-
-      } catch (e) {
-        console.error("Dashboard fetch error", e);
-      }
-    };
-    fetchData();
+    fetchDashboardData({ showLoading: true });
   }, []);
 
   return (
@@ -220,7 +249,13 @@ export default function Dashboard() {
                 </button>
 
                 <button
-                  onClick={() => navigate("/chat")}
+                  onClick={() =>
+                    navigate(
+                      latestConversation
+                        ? `/chat/${latestConversation.id}`
+                        : "/chat",
+                    )
+                  }
                   className="flex items-center gap-2 px-6 hover:bg-opacity-80 transition-all"
                   style={{
                     background: "rgba(74, 144, 217, 0.08)",
@@ -230,7 +265,11 @@ export default function Dashboard() {
                     height: "48px",
                   }}
                 >
-                  <span>Resume: Work Anxiety</span>
+                  <span>
+                    {latestConversation
+                      ? `Resume: ${latestConversation.title}`
+                      : "Resume Latest Session"}
+                  </span>
                 </button>
               </div>
             </div>
@@ -280,66 +319,87 @@ export default function Dashboard() {
               </div>
 
               <div className="space-y-3">
-                {conversations.map((conv, index) => (
-                  <motion.button
-                    key={conv.title}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: 0.3 + index * 0.1 }}
-                    className="w-full flex items-center gap-4 p-4 hover:-translate-y-0.5 transition-all text-left"
-                    style={{
-                      border: "1px solid #EEF2F7",
-                      borderRadius: "12px",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow =
-                        "0 4px 16px rgba(44, 95, 138, 0.10)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                    onClick={() => navigate(conv.id ? `/chat/${conv.id}` : "/chat")}
-                  >
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: "rgba(74, 144, 217, 0.08)" }}
+                {isLoading ? (
+                  <PageMessage
+                    title="Loading your recent activity"
+                    description="Pulling in your latest conversations and progress."
+                  />
+                ) : loadError ? (
+                  <PageMessage
+                    title="Dashboard data is temporarily unavailable"
+                    description={loadError}
+                    actionLabel="Try Again"
+                    onAction={() => fetchDashboardData({ showLoading: true })}
+                  />
+                ) : conversations.length === 0 ? (
+                  <PageMessage
+                    title="No conversations yet"
+                    description="Start your first chat and it will show up here for quick access."
+                    actionLabel="Start Chatting"
+                    onAction={() => navigate("/chat")}
+                  />
+                ) : (
+                  conversations.map((conv, index) => (
+                    <motion.button
+                      key={conv.id ?? conv.title}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: 0.3 + index * 0.1 }}
+                      className="w-full flex items-center gap-4 p-4 hover:-translate-y-0.5 transition-all text-left"
+                      style={{
+                        border: "1px solid #EEF2F7",
+                        borderRadius: "12px",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 4px 16px rgba(44, 95, 138, 0.10)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
+                      onClick={() => navigate(conv.id ? `/chat/${conv.id}` : "/chat")}
                     >
-                      <conv.icon size={22} style={{ color: conv.color }} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <h4
-                        className="text-base mb-1"
-                        style={{ color: "var(--aura-text-primary)" }}
+                      <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(74, 144, 217, 0.08)" }}
                       >
-                        {conv.title}
-                      </h4>
-                      <p
-                        className="text-sm mb-2 truncate"
-                        style={{ color: "var(--aura-text-secondary)" }}
-                      >
-                        {conv.preview}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="text-xs px-2 py-1"
-                          style={{
-                            background: "rgba(74, 144, 217, 0.1)",
-                            color: "#4A90D9",
-                            borderRadius: "8px",
-                          }}
-                        >
-                          {conv.tag}
-                        </span>
-                        <span className="text-xs" style={{ color: "#9BAABB" }}>
-                          {conv.time}
-                        </span>
+                        <conv.icon size={22} style={{ color: conv.color }} />
                       </div>
-                    </div>
 
-                    <ChevronRight size={20} style={{ color: "#C0CDD8" }} />
-                  </motion.button>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <h4
+                          className="text-base mb-1"
+                          style={{ color: "var(--aura-text-primary)" }}
+                        >
+                          {conv.title}
+                        </h4>
+                        <p
+                          className="text-sm mb-2 truncate"
+                          style={{ color: "var(--aura-text-secondary)" }}
+                        >
+                          {conv.preview}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-xs px-2 py-1"
+                            style={{
+                              background: "rgba(74, 144, 217, 0.1)",
+                              color: "#4A90D9",
+                              borderRadius: "8px",
+                            }}
+                          >
+                            {conv.tag}
+                          </span>
+                          <span className="text-xs" style={{ color: "#9BAABB" }}>
+                            {conv.time}
+                          </span>
+                        </div>
+                      </div>
+
+                      <ChevronRight size={20} style={{ color: "#C0CDD8" }} />
+                    </motion.button>
+                  ))
+                )}
               </div>
             </motion.div>
 
@@ -463,17 +523,17 @@ export default function Dashboard() {
                         letterSpacing: "0.05em",
                       }}
                     >
-                      MEDITATION
+                      {recommendations.featured.category.toUpperCase()}
                     </span>
                     <div>
                       <h4 className="text-base text-white mb-1">
-                        5-Minute Breathing Reset
+                        {recommendations.featured.title}
                       </h4>
                       <p
                         className="text-sm"
                         style={{ color: "rgba(255, 255, 255, 0.8)" }}
                       >
-                        Quick guided meditation for stress relief
+                        {recommendations.featured.description}
                       </p>
                     </div>
                   </div>
@@ -491,13 +551,13 @@ export default function Dashboard() {
                       className="text-sm mb-0.5"
                       style={{ color: "var(--aura-text-primary)" }}
                     >
-                      Understanding Anxiety
+                      {recommendations.items[0]?.title || "Understanding Anxiety"}
                     </h4>
                     <p
                       className="text-xs"
                       style={{ color: "var(--aura-text-secondary)" }}
                     >
-                      3 min read
+                      {recommendations.items[0]?.meta || "3 min read"}
                     </p>
                   </div>
                 </button>
@@ -600,38 +660,38 @@ export default function Dashboard() {
         isOpen={isMoodModalOpen} 
         onClose={() => setIsMoodModalOpen(false)} 
         onRefresh={() => {
-          // Re-fetch data to update stats
-          const fetchData = async () => {
-            try {
-              const [historyRes, statsRes] = await Promise.all([
-                API.get("/history/"),
-                API.get("/insights/stats")
-              ]);
-              
-              setConversations(historyRes.data.slice(0, 3).map(chat => ({
-                id: chat.id,
-                title: chat.title,
-                preview: chat.preview,
-                tag: chat.tag || "General",
-                time: new Date(chat.created_at).toLocaleDateString(),
-                icon: MessageCircle,
-                color: "#4A90D9"
-              })));
-              
-              const data = statsRes.data;
-              setStats([
-                { number: data.day_streak.toString(), label: "DAY STREAK", icon: Flame, color: "#F5A962" },
-                { number: data.total_sessions.toString(), label: "TOTAL SESSIONS", icon: MessageCircle, color: "#4A90D9" },
-                { number: Math.round(data.mood_score_percent) + "%", label: "MOOD SCORE", icon: ArrowUp, color: "#7EC8A4", showProgress: true, progressTarget: data.mood_score_percent / 100 },
-                { number: data.journals.toString(), label: "JOURNALS", icon: Book, color: "#4A90D9" },
-              ]);
-            } catch (e) {
-              console.error("Dashboard fetch error", e);
-            }
-          };
-          fetchData();
+          fetchDashboardData();
         }}
       />
+    </div>
+  );
+}
+
+function PageMessage({ title, description, actionLabel, onAction }) {
+  return (
+    <div
+      className="p-6 text-center"
+      style={{
+        border: "1px dashed #D0DCE8",
+        borderRadius: "16px",
+        background: "#F7FAFD",
+      }}
+    >
+      <h4 className="text-base mb-2" style={{ color: "var(--aura-text-primary)" }}>
+        {title}
+      </h4>
+      <p className="text-sm mb-4" style={{ color: "var(--aura-text-secondary)" }}>
+        {description}
+      </p>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="px-4 py-2 text-sm text-white hover:opacity-90 transition-all"
+          style={{ background: "#4A90D9", borderRadius: "10px" }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

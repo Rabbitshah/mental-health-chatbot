@@ -13,6 +13,10 @@ class User(Base):
     password = Column(String, nullable=True)
     google_id = Column(String, nullable=True)
     picture = Column(String, nullable=True)
+    dark_mode = Column(Boolean, nullable=False, default=False)
+    email_notifications = Column(Boolean, nullable=False, default=True)
+    push_notifications = Column(Boolean, nullable=False, default=True)
+    language = Column(String, nullable=False, default="English")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
