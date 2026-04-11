@@ -33,6 +33,8 @@ class ChatSession(Base):
     title = Column(String, nullable=False, default="New Conversation")
     tag = Column(String, nullable=True, default="General", index=True)
     summary = Column(Text, nullable=True)
+    is_pinned = Column(Boolean, nullable=False, default=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
 

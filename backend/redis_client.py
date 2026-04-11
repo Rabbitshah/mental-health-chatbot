@@ -1,29 +1,47 @@
 import os
+import time
+import logging
 import redis
-from typing import Optional
+from typing import Optional, Any
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
-# Redis configuration
+logger = logging.getLogger(__name__)
+
+# Redis configuration from environment variables
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
 
+# Connection retry configuration
+REDIS_MAX_RETRIES = int(os.getenv("REDIS_MAX_RETRIES", "3"))
+REDIS_RETRY_DELAY = float(os.getenv("REDIS_RETRY_DELAY", "0.5"))  # seconds
+
 # Global Redis client instance
 _redis_client: Optional[redis.Redis] = None
 
+
 def get_redis_client() -> Optional[redis.Redis]:
     """
-    Get Redis client with connection pooling and error handling.
-    Returns None if Redis is unavailable (graceful degradation).
+    Get Redis client with connection pooling, timeout, and retry logic.
+    Returns None if Redis is unavailable (graceful degradation per Requirement 12.5).
     """
     global _redis_client
-    
-    if _redis_client is None:
+
+    if _redis_client is not None:
+        # Verify the existing connection is still alive
         try:
-            _redis_client = redis.Redis(
+            _redis_client.ping()
+            return _redis_client
+        except (redis.ConnectionError, redis.TimeoutError):
+            logger.warning("Redis connection lost, attempting to reconnect...")
+            _redis_client = None
+
+    for attempt in range(1, REDIS_MAX_RETRIES + 1):
+        try:
+            client = redis.Redis(
                 host=REDIS_HOST,
                 port=REDIS_PORT,
                 password=REDIS_PASSWORD,
@@ -31,36 +49,118 @@ def get_redis_client() -> Optional[redis.Redis]:
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5,
-                health_check_interval=30
+                health_check_interval=30,
+                retry_on_timeout=True,
             )
             # Test connection
-            _redis_client.ping()
-            print(f"✓ Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}")
+            client.ping()
+            _redis_client = client
+            logger.info(f"Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}")
+            return _redis_client
         except (redis.ConnectionError, redis.TimeoutError) as e:
-            print(f"⚠ Redis connection failed: {e}")
-            print("  Application will continue without caching (graceful degradation)")
-            _redis_client = None
+            logger.warning(f"Redis connection attempt {attempt}/{REDIS_MAX_RETRIES} failed: {e}")
+            if attempt < REDIS_MAX_RETRIES:
+                time.sleep(REDIS_RETRY_DELAY * attempt)  # exponential-ish back-off
         except Exception as e:
-            print(f"⚠ Unexpected Redis error: {e}")
-            _redis_client = None
-    
-    return _redis_client
+            logger.warning(f"Unexpected Redis error on attempt {attempt}: {e}")
+            if attempt < REDIS_MAX_RETRIES:
+                time.sleep(REDIS_RETRY_DELAY * attempt)
 
-def close_redis_connection():
-    """Close Redis connection on application shutdown"""
+    logger.warning(
+        "Redis unavailable after %d attempts. Continuing without caching (graceful degradation).",
+        REDIS_MAX_RETRIES,
+    )
+    return None
+
+
+def close_redis_connection() -> None:
+    """Close Redis connection on application shutdown."""
     global _redis_client
     if _redis_client:
         try:
             _redis_client.close()
-            print("✓ Redis connection closed")
+            logger.info("Redis connection closed")
         except Exception as e:
-            print(f"⚠ Error closing Redis connection: {e}")
+            logger.warning(f"Error closing Redis connection: {e}")
         finally:
             _redis_client = None
 
+
+# ---------------------------------------------------------------------------
+# Helper functions — all handle a None client gracefully (Requirement 12.5)
+# ---------------------------------------------------------------------------
+
+def cache_get(key: str) -> Optional[str]:
+    """
+    Retrieve a value from the cache.
+    Returns None when the key is missing or Redis is unavailable.
+    """
+    client = get_redis_client()
+    if client is None:
+        return None
+    try:
+        return client.get(key)
+    except (redis.RedisError, Exception) as e:
+        logger.warning(f"Cache GET failed for key '{key}': {e}")
+        return None
+
+
+def cache_set(key: str, value: Any, ttl: int) -> bool:
+    """
+    Store a value in the cache with a TTL (seconds).
+    Returns True on success, False when Redis is unavailable or an error occurs.
+    """
+    client = get_redis_client()
+    if client is None:
+        return False
+    try:
+        client.setex(key, ttl, value)
+        return True
+    except (redis.RedisError, Exception) as e:
+        logger.warning(f"Cache SET failed for key '{key}': {e}")
+        return False
+
+
+def cache_delete(key: str) -> bool:
+    """
+    Delete a key from the cache.
+    Returns True on success, False when Redis is unavailable or an error occurs.
+    """
+    client = get_redis_client()
+    if client is None:
+        return False
+    try:
+        client.delete(key)
+        return True
+    except (redis.RedisError, Exception) as e:
+        logger.warning(f"Cache DELETE failed for key '{key}': {e}")
+        return False
+
+
+def cache_delete_pattern(pattern: str) -> int:
+    """
+    Delete all keys matching a glob-style pattern.
+    Returns the number of keys deleted, or 0 on failure.
+    """
+    client = get_redis_client()
+    if client is None:
+        return 0
+    try:
+        keys = client.keys(pattern)
+        if keys:
+            return client.delete(*keys)
+        return 0
+    except (redis.RedisError, Exception) as e:
+        logger.warning(f"Cache DELETE pattern '{pattern}' failed: {e}")
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Cache key patterns
+# ---------------------------------------------------------------------------
+
 class CacheKeys:
-    """Redis cache key patterns"""
+    """Redis cache key patterns (use .format() to fill placeholders)."""
     USER_PROFILE = "user:{user_id}:profile"
     SESSION_LIST = "user:{user_id}:sessions"
     SESSION_DATA = "session:{session_id}:data"
@@ -68,11 +168,15 @@ class CacheKeys:
     MOOD_ANALYTICS = "user:{user_id}:mood:analytics:{days}"
     RATE_LIMIT = "ratelimit:{user_id}:{endpoint}"
 
+
+# ---------------------------------------------------------------------------
 # Cache TTL (Time To Live) in seconds
+# ---------------------------------------------------------------------------
+
 class CacheTTL:
-    """Cache expiration times"""
-    USER_PROFILE = 600  # 10 minutes
-    SESSION_LIST = 300  # 5 minutes
-    SESSION_DATA = 300  # 5 minutes
+    """Cache expiration times aligned with design document."""
+    USER_PROFILE = 600   # 10 minutes  (Requirement 12.4)
+    SESSION_LIST = 300   # 5 minutes   (Requirement 12.2)
+    SESSION_DATA = 300   # 5 minutes   (Requirement 12.2)
     SESSION_MESSAGES = 300  # 5 minutes
-    MOOD_ANALYTICS = 900  # 15 minutes
+    MOOD_ANALYTICS = 900  # 15 minutes (Requirement 12.6)

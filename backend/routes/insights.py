@@ -5,11 +5,16 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timedelta
+import json
+import logging
 
 from database import get_db
 from models import MoodEntry, User, ChatSession, ChatMessage
 from dependencies import get_current_user
 from limiter import limiter
+from redis_client import cache_get, cache_set, cache_delete_pattern, CacheKeys, CacheTTL
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/insights")
 
@@ -88,15 +93,47 @@ def add_mood_entry(request: Request, mood_request: MoodRequest, db: Session = De
     db.add(new_entry)
     db.commit()
     db.refresh(new_entry)
+
+    try:
+        pattern = CacheKeys.MOOD_ANALYTICS.format(user_id=current_user.id, days="*")
+        cache_delete_pattern(pattern)
+    except Exception as e:
+        logger.warning(f"Cache invalidation failed for mood analytics (user {current_user.id}): {e}")
+
     return new_entry
 
 @router.get("/mood", response_model=List[MoodResponse])
 def get_mood_trend(days: int = 7, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    cache_key = CacheKeys.MOOD_ANALYTICS.format(user_id=current_user.id, days=days)
+    try:
+        cached = cache_get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception as e:
+        logger.warning(f"Cache GET failed for mood analytics (user {current_user.id}, days={days}): {e}")
+
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     entries = db.query(MoodEntry).filter(
         MoodEntry.user_id == current_user.id,
         MoodEntry.date >= cutoff_date
     ).order_by(MoodEntry.date.asc()).all()
+
+    result = [
+        {
+            "id": e.id,
+            "mood_score": e.mood_score,
+            "energy_level": e.energy_level,
+            "stress_level": e.stress_level,
+            "date": e.date.isoformat(),
+        }
+        for e in entries
+    ]
+
+    try:
+        cache_set(cache_key, json.dumps(result), CacheTTL.MOOD_ANALYTICS)
+    except Exception as e:
+        logger.warning(f"Cache SET failed for mood analytics (user {current_user.id}, days={days}): {e}")
+
     return entries
 
 @router.get("/stats")

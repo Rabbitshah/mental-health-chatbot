@@ -8,6 +8,37 @@ from database import Base
 from models import User, ChatSession, ChatMessage
 import os
 
+# ---------------------------------------------------------------------------
+# Compatibility patch: bcrypt 4.x+ removed __about__ and now raises ValueError
+# for passwords > 72 bytes. Patch bcrypt.hashpw/checkpw to truncate (old
+# behavior) and add __about__ so passlib 1.7.x doesn't crash.
+# Must be applied before any passlib import.
+# ---------------------------------------------------------------------------
+import bcrypt as _bcrypt_compat
+import types as _types_compat
+
+# Add missing __about__ attribute
+if not hasattr(_bcrypt_compat, '__about__'):
+    _about = _types_compat.ModuleType('bcrypt.__about__')
+    _about.__version__ = _bcrypt_compat.__version__
+    _bcrypt_compat.__about__ = _about
+
+# Patch hashpw to truncate passwords > 72 bytes (restores pre-4.x behavior)
+_orig_hashpw = _bcrypt_compat.hashpw
+def _patched_hashpw(password, salt):
+    if isinstance(password, (bytes, bytearray)) and len(password) > 72:
+        password = password[:72]
+    return _orig_hashpw(password, salt)
+_bcrypt_compat.hashpw = _patched_hashpw
+
+# Patch checkpw similarly
+_orig_checkpw = _bcrypt_compat.checkpw
+def _patched_checkpw(password, hashed_password):
+    if isinstance(password, (bytes, bytearray)) and len(password) > 72:
+        password = password[:72]
+    return _orig_checkpw(password, hashed_password)
+_bcrypt_compat.checkpw = _patched_checkpw
+
 # Use in-memory SQLite for testing
 TEST_DATABASE_URL = "sqlite:///:memory:"
 

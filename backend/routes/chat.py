@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field, validator
 from typing import Optional
@@ -8,6 +10,9 @@ from database import get_db
 from models import ChatSession, ChatMessage, User
 from dependencies import get_current_user
 from limiter import limiter
+from redis_client import cache_delete, CacheKeys
+
+logger = logging.getLogger(__name__)
 
 import google.generativeai as genai
 
@@ -92,6 +97,36 @@ model = genai.GenerativeModel(
     model_name=MODEL_NAME,
     system_instruction=MENTAL_HEALTH_SYSTEM_PROMPT
 )
+
+def get_session_history(session_id: int, db: Session, limit: int = 50) -> list:
+    """
+    8.1: Retrieve the last `limit` messages for a session, ordered oldest-first.
+    Requirements: 4.1, 4.4
+    """
+    from sqlalchemy import desc
+    messages = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(desc(ChatMessage.created_at))
+        .limit(limit)
+        .all()
+    )
+    # Reverse so the list is chronological (oldest first)
+    return list(reversed(messages))
+
+
+def format_history_for_gemini(messages: list) -> list:
+    """
+    8.2: Convert ChatMessage objects to the Gemini API history format.
+    DB sender 'user' -> role 'user'; DB sender 'ai' -> role 'model'.
+    Requirements: 4.2, 4.3
+    """
+    history = []
+    for msg in messages:
+        role = "user" if msg.sender == "user" else "model"
+        history.append({"role": role, "parts": [{"text": msg.text}]})
+    return history
+
 
 router = APIRouter()
 
@@ -216,6 +251,13 @@ def build_session_title(text: str, inferred_tag: str) -> str:
 
     return compact_message[:40].rstrip()
 
+def generate_session_title(first_message: str) -> str:
+    """Generate a session title from the first message, truncating to 50 chars."""
+    text = first_message.strip()
+    if len(text) <= 50:
+        return text
+    return text[:47] + "..."
+
 def is_auto_generated_title(title: str) -> bool:
     return title == "New Conversation" or title.endswith("...")
 
@@ -254,14 +296,11 @@ def chat(
             db.refresh(chat_session)
 
         # 2. Fetch history and build Gemini format
-        previous_messages = db.query(ChatMessage).filter(
-            ChatMessage.session_id == chat_session.id
-        ).order_by(ChatMessage.created_at.asc()).all()
+        # 8.1: Load last 50 messages ordered chronologically (oldest first) - Req 4.1, 4.4
+        previous_messages = get_session_history(chat_session.id, db)
 
-        history = []
-        for msg in previous_messages:
-            role = "user" if msg.sender == "user" else "model"
-            history.append({"role": role, "parts": [msg.text]})
+        # 8.2 & 8.3: Format for Gemini API and pass to start_chat() - Req 4.2, 4.3, 4.5
+        history = format_history_for_gemini(previous_messages)
 
         # 3. Save User Message
         user_msg = ChatMessage(
@@ -307,6 +346,13 @@ def chat(
             chat_session.title = refreshed_title
 
         db.commit()
+
+        # Invalidate caches so stale data is not served (Requirement 12.3)
+        try:
+            cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+            cache_delete(CacheKeys.SESSION_MESSAGES.format(session_id=chat_session.id))
+        except Exception as cache_err:
+            logger.warning(f"Cache invalidation failed after chat message save: {cache_err}")
 
         return {
             "response": ai_text,

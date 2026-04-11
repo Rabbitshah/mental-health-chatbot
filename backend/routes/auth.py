@@ -4,6 +4,12 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
 import re
+import json
+import logging
+
+from redis_client import cache_get, cache_set, cache_delete, CacheKeys, CacheTTL
+
+logger = logging.getLogger(__name__)
 
 from database import (
     SessionLocal,
@@ -79,6 +85,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def build_user_payload(user: User) -> dict:
+    """Build a safe user payload dict (no password hash)."""
+    return {
+        "name": user.name,
+        "username": user.username,
+        "email": user.email,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
 
 @router.post("/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
@@ -175,6 +191,54 @@ def logout(request: RefreshTokenRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail=str(e))
 
 
+@router.get("/profile")
+def get_profile(
+    db: Session = Depends(get_db),
+    authorization: str = Header(None),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+        user_email = payload.get("email")
+        if not user_email:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(User).filter(User.email == user_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    cache_key = CacheKeys.USER_PROFILE.format(user_id=user.id)
+    try:
+        cached = cache_get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception as e:
+        logger.warning(f"Cache GET failed for profile {user.id}: {e}")
+
+    profile_data = {
+        "name": user.name,
+        "username": user.username,
+        "email": user.email,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "dark_mode": bool(user.dark_mode),
+        "email_notifications": bool(user.email_notifications),
+        "push_notifications": bool(user.push_notifications),
+        "language": user.language or "English",
+    }
+
+    try:
+        cache_set(cache_key, json.dumps(profile_data), CacheTTL.USER_PROFILE)
+    except Exception as e:
+        logger.warning(f"Cache SET failed for profile {user.id}: {e}")
+
+    return profile_data
+
+
 @router.put("/profile")
 def update_profile(
     update: UserUpdate,
@@ -235,6 +299,11 @@ def update_profile(
 
     db.commit()
     db.refresh(user)
+
+    try:
+        cache_delete(CacheKeys.USER_PROFILE.format(user_id=user.id))
+    except Exception as e:
+        logger.warning(f"Cache DELETE failed for profile {user.id}: {e}")
 
     return {
         "msg": "Profile updated",

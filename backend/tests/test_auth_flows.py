@@ -4,6 +4,32 @@ Unit tests for authentication flows (task 2.7).
 Tests login, token refresh, and logout via FastAPI TestClient.
 Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6
 """
+# ---------------------------------------------------------------------------
+# Compatibility patch: bcrypt 4.x+ removed __about__ and now raises ValueError
+# for passwords > 72 bytes. Patch before any passlib import.
+# ---------------------------------------------------------------------------
+import bcrypt as _bcrypt_compat
+import types as _types_compat
+
+if not hasattr(_bcrypt_compat, '__about__'):
+    _about = _types_compat.ModuleType('bcrypt.__about__')
+    _about.__version__ = _bcrypt_compat.__version__
+    _bcrypt_compat.__about__ = _about
+
+_orig_hashpw = _bcrypt_compat.hashpw
+def _patched_hashpw(password, salt):
+    if isinstance(password, (bytes, bytearray)) and len(password) > 72:
+        password = password[:72]
+    return _orig_hashpw(password, salt)
+_bcrypt_compat.hashpw = _patched_hashpw
+
+_orig_checkpw = _bcrypt_compat.checkpw
+def _patched_checkpw(password, hashed_password):
+    if isinstance(password, (bytes, bytearray)) and len(password) > 72:
+        password = password[:72]
+    return _orig_checkpw(password, hashed_password)
+_bcrypt_compat.checkpw = _patched_checkpw
+
 import pytest
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, event, StaticPool
