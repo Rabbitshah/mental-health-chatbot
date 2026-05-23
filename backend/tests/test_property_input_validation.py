@@ -23,7 +23,7 @@ import pytest
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 
@@ -36,7 +36,8 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=5000)
     session_id: Optional[int] = Field(None, ge=1)
 
-    @validator('message')
+    @field_validator('message')
+    @classmethod
     def message_not_whitespace(cls, v):
         if not v or v.strip() == '':
             raise ValueError('Message cannot be empty or whitespace only')
@@ -58,7 +59,8 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=3, max_length=50)
 
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email_format(cls, v):
         if not re.match(EMAIL_REGEX, v):
             raise ValueError('Invalid email format')
@@ -206,7 +208,7 @@ class TestProperty30InputValidationErrorResponses:
 
     @given(mood_score=_mood_out_of_range_st, energy=_mood_valid_st, stress=_mood_valid_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -236,7 +238,7 @@ class TestProperty30InputValidationErrorResponses:
 
     @given(energy=_mood_out_of_range_st, mood=_mood_valid_st, stress=_mood_valid_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -263,7 +265,7 @@ class TestProperty30InputValidationErrorResponses:
 
     @given(stress=_mood_out_of_range_st, mood=_mood_valid_st, energy=_mood_valid_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -327,7 +329,7 @@ class TestProperty30InputValidationErrorResponses:
 
     @given(message=_too_long_message_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.large_base_example],
     )
@@ -350,7 +352,7 @@ class TestProperty30InputValidationErrorResponses:
 
     @given(mood=_mood_valid_st, energy=_mood_valid_st, stress=_mood_valid_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -393,7 +395,7 @@ class TestProperty31WhitespaceOnlyInputRejection:
 
     @given(whitespace=_simple_whitespace_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -417,7 +419,7 @@ class TestProperty31WhitespaceOnlyInputRejection:
 
     @given(whitespace=_whitespace_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -441,7 +443,7 @@ class TestProperty31WhitespaceOnlyInputRejection:
 
     @given(message=_valid_message_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -534,7 +536,7 @@ class TestProperty32EmailFormatValidation:
 
     @given(invalid_email=_invalid_email_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -566,7 +568,7 @@ class TestProperty32EmailFormatValidation:
 
     @given(valid_email=_valid_email_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

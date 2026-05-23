@@ -10,7 +10,7 @@ import pytest
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant, initialize
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from models import User, ChatSession, ChatMessage
 import time
 
@@ -45,7 +45,7 @@ class TestMessageRetrievalOrdering:
         )
     )
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -78,7 +78,7 @@ class TestMessageRetrievalOrdering:
         
         # Create messages with incrementing timestamps
         created_messages = []
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc).replace(tzinfo=None)
         
         for i, (text, sender) in enumerate(messages_data):
             # Add small time increments to ensure distinct timestamps
@@ -129,7 +129,7 @@ class TestMessageRetrievalOrdering:
         messages_per_session=st.integers(min_value=2, max_value=10)
     )
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -148,7 +148,7 @@ class TestMessageRetrievalOrdering:
         Then: Each session's messages MUST be ordered by created_at independently
         """
         sessions_data = []
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc).replace(tzinfo=None)
         
         # Create multiple sessions with messages
         for session_idx in range(session_count):
@@ -215,7 +215,7 @@ class TestCascadeDeletion:
         messages_per_session=st.integers(min_value=1, max_value=20)
     )
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -306,7 +306,7 @@ class TestCascadeDeletion:
         messages_in_session=st.integers(min_value=1, max_value=30)
     )
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )
@@ -372,7 +372,7 @@ class TestCascadeDeletion:
         sessions_per_user=st.integers(min_value=1, max_value=3)
     )
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture]
     )

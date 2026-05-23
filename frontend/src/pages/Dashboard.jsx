@@ -71,7 +71,9 @@ export default function Dashboard() {
         API.get("/insights/recommendations"),
       ]);
 
-      setConversations(historyRes.data.slice(0, 3).map(chat => ({
+      const sessions = historyRes.data.sessions ?? historyRes.data;
+
+      setConversations(sessions.slice(0, 3).map(chat => ({
         id: chat.id,
         title: chat.title,
         preview: chat.preview,
@@ -81,10 +83,10 @@ export default function Dashboard() {
         color: "#4A90D9"
       })));
       setLatestConversation(
-        historyRes.data.length > 0
+        sessions.length > 0
           ? {
-              id: historyRes.data[0].id,
-              title: historyRes.data[0].title,
+              id: sessions[0].id,
+              title: sessions[0].title,
             }
           : null,
       );
@@ -119,7 +121,9 @@ export default function Dashboard() {
       try {
         const user = JSON.parse(userStr);
         if (user?.name) setUserName(user.name.split(" ")[0]);
-      } catch (e) {}
+      } catch (error) {
+        console.error("Failed to parse user data", error);
+      }
     }
     fetchDashboardData({ showLoading: true });
   }, []);

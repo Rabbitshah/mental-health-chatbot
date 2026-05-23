@@ -17,6 +17,10 @@ engine_kwargs = {
 
 if DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Tune pool for production Postgres workloads
+    engine_kwargs["pool_size"] = int(os.getenv("DB_POOL_SIZE", "10"))
+    engine_kwargs["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "20"))
 
 # Keep pooled DB connections healthy for managed Postgres providers (e.g., Neon)
 # that may close idle SSL sessions.
@@ -73,6 +77,30 @@ def ensure_user_preference_columns():
             connection.execute(
                 text("ALTER TABLE users ADD COLUMN language VARCHAR NOT NULL DEFAULT 'English'")
             )
+        if "notification_frequency" not in existing_columns:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN notification_frequency VARCHAR NOT NULL DEFAULT 'daily'")
+            )
+
+def ensure_crisis_event_columns():
+    inspector = inspect(engine)
+    existing_columns = {column["name"] for column in inspector.get_columns("crisis_events")}
+
+    with engine.begin() as connection:
+        if "confidence" not in existing_columns:
+            connection.execute(
+                text("ALTER TABLE crisis_events ADD COLUMN confidence FLOAT")
+            )
+        if "detection_method" not in existing_columns:
+            connection.execute(
+                text("ALTER TABLE crisis_events ADD COLUMN detection_method VARCHAR")
+            )
+
+def ensure_wellness_feature_tables():
+    from models import JournalEntry, SafetyPlan
+
+    SafetyPlan.__table__.create(bind=engine, checkfirst=True)
+    JournalEntry.__table__.create(bind=engine, checkfirst=True)
 
 def get_db():
     db: Session = SessionLocal()

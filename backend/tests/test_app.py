@@ -6,6 +6,13 @@ touching the real PostgreSQL database. The Gemini model is replaced with a
 fake implementation so no external API calls are made.
 """
 # ---------------------------------------------------------------------------
+# Disable Redis before any app imports to avoid connection hangs in CI/local
+# environments where Redis is not running.
+# ---------------------------------------------------------------------------
+import os as _os
+_os.environ.setdefault("REDIS_ENABLED", "false")
+
+# ---------------------------------------------------------------------------
 # Compatibility patch: bcrypt 4.x+ removed __about__. Must be applied before
 # any passlib import.
 # ---------------------------------------------------------------------------
@@ -67,6 +74,8 @@ _TABLES = [
     Base.metadata.tables["chat_messages"],
     Base.metadata.tables["mood_entries"],
     Base.metadata.tables["refresh_tokens"],
+    Base.metadata.tables["safety_plans"],
+    Base.metadata.tables["journal_entries"],
 ]
 
 _Session = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
@@ -135,7 +144,7 @@ def client():
 
 @pytest.fixture(autouse=True)
 def clean_db():
-    """Truncate all tables before each test for isolation."""
+    """Truncate all tables and reset rate limiter before each test for isolation."""
     yield
     db = _Session()
     try:
@@ -144,6 +153,12 @@ def clean_db():
         db.commit()
     finally:
         db.close()
+    # Reset rate limiter storage so per-user counters don't bleed between tests
+    try:
+        from limiter import limiter
+        limiter._storage.reset()
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

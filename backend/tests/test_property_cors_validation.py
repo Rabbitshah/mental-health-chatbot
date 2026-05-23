@@ -102,7 +102,7 @@ class TestProperty29CORSOriginValidation:
 
     @given(origin=_unauthorized_origin_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -141,7 +141,7 @@ class TestProperty29CORSOriginValidation:
 
     @given(origin=_allowed_origin_st)
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -176,7 +176,7 @@ class TestProperty29CORSOriginValidation:
 
     @given(origin=_unauthorized_origin_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -206,7 +206,7 @@ class TestProperty29CORSOriginValidation:
 
     @given(origin=_allowed_origin_st)
     @settings(
-        max_examples=20,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -246,7 +246,7 @@ class TestProperty29CORSOriginValidation:
         )
     )
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

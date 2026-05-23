@@ -7,6 +7,8 @@ import {
   Settings,
   LogOut,
   Bell,
+  BookOpen,
+  ClipboardList,
   MoreVertical,
   Edit3,
   Trash2,
@@ -36,13 +38,15 @@ export default function Sidebar() {
   const fetchRecentChats = async () => {
     try {
       const { data } = await API.get("/history/");
+      const sessions = data.sessions ?? data; // handle both paginated and legacy array
       setRecentChats(
-        data.slice(0, 5).map((chat) => ({
+        sessions.slice(0, 5).map((chat) => ({
           id: chat.id.toString(),
           title: chat.title,
           time: formatRelativeDate(chat.updated_at || chat.created_at),
           isPinned: chat.is_pinned,
           isArchived: chat.is_archived,
+          tag: chat.tag || "General",
         })),
       );
     } catch (error) {
@@ -77,6 +81,8 @@ export default function Sidebar() {
     if (path.startsWith("/chat")) return "chat";
     if (path === "/history") return "history";
     if (path === "/insights") return "insights";
+    if (path === "/journal") return "journal";
+    if (path === "/safety-plan") return "safety";
     if (path === "/profile") return "settings";
     return "chat";
   };
@@ -161,8 +167,9 @@ export default function Sidebar() {
   };
 
   return (
+    <>
     <aside
-      className="flex flex-col h-screen"
+      className="hidden md:flex flex-col h-screen"
       style={{ width: "260px", background: "#1C2B3A", color: "white" }}
     >
       <nav className="px-2 py-3">
@@ -201,6 +208,18 @@ export default function Sidebar() {
           label="Insights"
           active={activeNav === "insights"}
           onClick={() => navigate("/insights")}
+        />
+        <NavItem
+          icon={BookOpen}
+          label="Journal"
+          active={activeNav === "journal"}
+          onClick={() => navigate("/journal")}
+        />
+        <NavItem
+          icon={ClipboardList}
+          label="Safety Plan"
+          active={activeNav === "safety"}
+          onClick={() => navigate("/safety-plan")}
         />
       </nav>
 
@@ -406,6 +425,8 @@ export default function Sidebar() {
         )}
       </AnimatePresence>
     </aside>
+    <MobileBottomNav activeNav={activeNav} navigate={navigate} />
+    </>
   );
 }
 
@@ -439,6 +460,51 @@ function NavItem({ icon: Icon, label, active, onClick }) {
       {createElement(Icon, { size: 18 })}
       <span>{label}</span>
     </button>
+  );
+}
+
+function MobileBottomNav({ activeNav, navigate }) {
+  const items = [
+    { id: "home", label: "Home", icon: Home, path: "/dashboard" },
+    { id: "chat", label: "Chat", icon: MessageCircle, path: "/chat" },
+    { id: "journal", label: "Journal", icon: BookOpen, path: "/journal" },
+    { id: "safety", label: "Plan", icon: ClipboardList, path: "/safety-plan" },
+    { id: "insights", label: "Insights", icon: BarChart3, path: "/insights" },
+  ];
+
+  return (
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-2 py-2"
+      style={{
+        background: "rgba(255, 255, 255, 0.96)",
+        borderTop: "1px solid #E0E7EF",
+        boxShadow: "0 -8px 28px rgba(44, 95, 138, 0.10)",
+      }}
+      aria-label="Mobile navigation"
+    >
+      <div className="grid grid-cols-5 gap-1">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = activeNav === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => navigate(item.path)}
+              className="flex flex-col items-center justify-center gap-1 py-2 text-xs"
+              style={{
+                borderRadius: "12px",
+                color: active ? "#2C5F8A" : "#66768F",
+                background: active ? "rgba(74, 144, 217, 0.1)" : "transparent",
+              }}
+            >
+              <Icon size={18} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
@@ -516,7 +582,21 @@ function RecentChatItem({
                   <span className="truncate">{chat.title}</span>
                   {chat.isPinned && <Pin size={12} />}
                 </div>
-                <div className="text-xs opacity-50 mt-0.5">{chat.time}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="text-xs opacity-50">{chat.time}</div>
+                  {chat.tag && chat.tag !== "General" && (
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded"
+                      style={{
+                        background: "rgba(74, 144, 217, 0.2)",
+                        color: "#A8C8E8",
+                        fontSize: "10px",
+                      }}
+                    >
+                      {chat.tag}
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 onClick={(e) => {

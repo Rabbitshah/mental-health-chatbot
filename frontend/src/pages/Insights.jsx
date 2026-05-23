@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   TrendingUp,
   Activity,
@@ -143,7 +143,7 @@ export default function Insights() {
     correlations: [],
   });
 
-  const fetchInsightsData = async () => {
+  const fetchInsightsData = useCallback(async () => {
     setIsLoading(true);
     setLoadError("");
 
@@ -253,11 +253,11 @@ export default function Insights() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedPeriod]);
 
   useEffect(() => {
     fetchInsightsData();
-  }, [selectedPeriod]);
+  }, [fetchInsightsData]);
 
   return (
     <div className="flex h-screen overflow-hidden">

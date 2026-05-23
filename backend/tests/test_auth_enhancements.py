@@ -4,7 +4,7 @@ Unit tests for authentication enhancements (refresh tokens).
 Uses the real models and an in-memory SQLite database to avoid mapper conflicts.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, event, StaticPool
 from sqlalchemy.orm import sessionmaker
 
@@ -119,14 +119,14 @@ class TestRefreshToken:
         assert db_token is not None
         assert db_token.user_id == test_user.id
         assert db_token.revoked is False
-        assert db_token.expires_at > datetime.utcnow()
+        assert db_token.expires_at > datetime.now(timezone.utc).replace(tzinfo=None).replace(tzinfo=None)
 
     def test_refresh_token_expiry_is_7_days(self, db, test_user):
         """Refresh tokens expire in 7 days."""
         token = create_refresh_token(test_user.id, db)
 
         db_token = db.query(RefreshToken).filter(RefreshToken.token == token).first()
-        expected_expiry = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expected_expiry = datetime.now(timezone.utc).replace(tzinfo=None).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         time_diff = abs((db_token.expires_at - expected_expiry).total_seconds())
 
         assert time_diff < 5
@@ -159,7 +159,7 @@ class TestRefreshToken:
         token = create_refresh_token(test_user.id, db)
 
         db_token = db.query(RefreshToken).filter(RefreshToken.token == token).first()
-        db_token.expires_at = datetime.utcnow() - timedelta(days=1)
+        db_token.expires_at = datetime.now(timezone.utc).replace(tzinfo=None).replace(tzinfo=None) - timedelta(days=1)
         db.commit()
 
         with pytest.raises(ValueError, match="Refresh token has expired"):

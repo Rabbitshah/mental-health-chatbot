@@ -15,6 +15,7 @@ import {
 import { motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
 import API from "../api";
+import NotificationBell from "../components/NotificationBell";
 
 export default function ManageProfile() {
   const [darkMode, setDarkMode] = useState(false);
@@ -28,7 +29,7 @@ export default function ManageProfile() {
   const [email, setEmail] = useState("jane@example.com");
   const [profilePassword, setProfilePassword] = useState("");
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [memberSince, setMemberSince] = useState("");
   const [hasPassword, setHasPassword] = useState(true);
   const [authProvider, setAuthProvider] = useState("local");
@@ -42,6 +43,9 @@ export default function ManageProfile() {
     archived_sessions: 0,
     pinned_sessions: 0,
   });
+  const [recentMoodEntries, setRecentMoodEntries] = useState([]);
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
@@ -73,6 +77,11 @@ export default function ManageProfile() {
       })
       .catch((error) => {
         console.error("Failed to load privacy summary", error);
+      });
+    API.get("/insights/mood?days=365")
+      .then((res) => setRecentMoodEntries(res.data.slice(-5).reverse()))
+      .catch((error) => {
+        console.error("Failed to load mood entries", error);
       });
   }, []);
 
@@ -186,28 +195,54 @@ export default function ManageProfile() {
     }
   };
 
+  const [exportFormat, setExportFormat] = useState("json");
+  const [isExporting, setIsExporting] = useState(false);
+
   const handleExportData = async () => {
     setStatusMessage(null);
+    setIsExporting(true);
     try {
-      const res = await API.get("/export");
-      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute("download", `aura_data_export_${new Date().toISOString().split('T')[0]}.json`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode.removeChild(link);
+      const dateParams = {
+        ...(exportStartDate ? { start_date: new Date(exportStartDate).toISOString() } : {}),
+        ...(exportEndDate ? { end_date: new Date(`${exportEndDate}T23:59:59`).toISOString() } : {}),
+      };
+      if (exportFormat === "json") {
+        const res = await API.get("/export", { params: { format: "json", ...dateParams } });
+        const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `aura_data_export_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else if (exportFormat === "csv" || exportFormat === "pdf") {
+        const res = await API.get("/export", {
+          params: { format: exportFormat, ...dateParams },
+          responseType: "blob",
+        });
+        const url = window.URL.createObjectURL(res.data);
+        const link = document.createElement("a");
+        link.href = url;
+        const extension = exportFormat === "csv" ? "zip" : "pdf";
+        link.setAttribute("download", `aura_data_export_${new Date().toISOString().split('T')[0]}.${extension}`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }
       setStatusMessage({
         type: "success",
         text: "Your data export is ready and has started downloading.",
       });
-    } catch (error) {
+    } catch {
       setStatusMessage({
         type: "error",
         text: "We couldn't export your data right now.",
       });
-      alert("Failed to export data");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -284,7 +319,7 @@ export default function ManageProfile() {
       return;
     }
 
-    setIsDeleting(true);
+    setIsDeletingAccount(true);
     try {
       await API.delete("/profile", {
         data: { current_password: profilePassword }
@@ -293,10 +328,45 @@ export default function ManageProfile() {
       localStorage.clear();
       window.location.href = "/";
     } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to delete account.",
+      });
       alert(error.response?.data?.detail || "Failed to delete account");
     } finally {
-      setIsDeleting(false);
+      setIsDeletingAccount(false);
     }
+  };
+
+  const handleDeleteMoodEntry = async (moodId) => {
+    if (!window.confirm("Delete this mood check-in?")) return;
+    try {
+      await API.delete(`/insights/mood/${moodId}`);
+      setRecentMoodEntries((current) => current.filter((entry) => entry.id !== moodId));
+      setPrivacySummary((current) => ({
+        ...current,
+        mood_entries: Math.max((current.mood_entries || 1) - 1, 0),
+      }));
+      setStatusMessage({
+        type: "success",
+        text: "Mood check-in deleted.",
+      });
+    } catch (error) {
+      setStatusMessage({
+        type: "error",
+        text: error.response?.data?.detail || "Failed to delete mood check-in.",
+      });
+    }
+  };
+
+  const handleClearLocalDrafts = () => {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("aurachat-draft-"))
+      .forEach((key) => localStorage.removeItem(key));
+    setStatusMessage({
+      type: "success",
+      text: "Local chat drafts were cleared from this browser.",
+    });
   };
 
   const initials =
@@ -326,9 +396,7 @@ export default function ManageProfile() {
             Settings
           </h2>
           <div className="flex items-center gap-4">
-            <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-              <Bell size={20} style={{ color: "var(--aura-text-secondary)" }} />
-            </button>
+            <NotificationBell />
             <button className="p-2 hover:bg-gray-100 rounded-lg transition-all">
               <HelpCircle
                 size={20}
@@ -799,21 +867,113 @@ export default function ManageProfile() {
                   <PrivacyMetric label="Archived" value={privacySummary.archived_sessions} />
                 </div>
 
-                <button
-                  onClick={handleExportData}
-                  className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
-                  style={{ borderRadius: "12px" }}
-                >
-                  <Download size={20} style={{ color: "#4A90D9" }} />
+                <div className="flex items-start gap-3 w-full p-4" style={{ borderRadius: "12px", border: "1px solid #E0E7EF" }}>
+                  <Download size={20} style={{ color: "#4A90D9", marginTop: "2px" }} />
                   <div className="flex-1">
                     <div style={{ color: "var(--aura-text-primary)" }}>
                       Export My Data
                     </div>
                     <div
-                      className="text-sm"
+                      className="text-sm mb-3"
                       style={{ color: "var(--aura-text-secondary)" }}
                     >
                       Download your conversations, preferences, and wellness history
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex gap-2">
+                        {["json", "csv", "pdf"].map((fmt) => (
+                          <button
+                            key={fmt}
+                            onClick={() => setExportFormat(fmt)}
+                            className="px-3 py-1.5 text-sm transition-all uppercase"
+                            style={{
+                              borderRadius: "8px",
+                              background: exportFormat === fmt ? "#4A90D9" : "transparent",
+                              color: exportFormat === fmt ? "white" : "var(--aura-text-secondary)",
+                              border: exportFormat === fmt ? "none" : "1px solid #D0DCE8",
+                            }}
+                          >
+                            {fmt}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(event) => setExportStartDate(event.target.value)}
+                        className="px-3 py-1.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ border: "1px solid #D0DCE8", borderRadius: "8px", color: "var(--aura-text-primary)" }}
+                        aria-label="Export start date"
+                      />
+                      <input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(event) => setExportEndDate(event.target.value)}
+                        className="px-3 py-1.5 text-sm focus:outline-none focus:ring-2"
+                        style={{ border: "1px solid #D0DCE8", borderRadius: "8px", color: "var(--aura-text-primary)" }}
+                        aria-label="Export end date"
+                      />
+                      <button
+                        onClick={handleExportData}
+                        disabled={isExporting}
+                        className="px-4 py-1.5 text-sm text-white hover:opacity-90 transition-all disabled:opacity-50"
+                        style={{ background: "#4A90D9", borderRadius: "8px" }}
+                      >
+                        {isExporting ? "Exporting..." : `Download ${exportFormat.toUpperCase()}`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4" style={{ borderRadius: "12px", border: "1px solid #E0E7EF" }}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <div style={{ color: "var(--aura-text-primary)" }}>
+                        Mood Check-ins
+                      </div>
+                      <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                        Delete individual mood entries without clearing your account.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {recentMoodEntries.length === 0 ? (
+                      <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                        No recent mood entries found.
+                      </div>
+                    ) : (
+                      recentMoodEntries.map((entry) => (
+                        <div key={entry.id} className="flex items-center justify-between gap-3 p-3" style={{ background: "#F7FAFD", borderRadius: "10px" }}>
+                          <div className="text-sm" style={{ color: "var(--aura-text-primary)" }}>
+                            {new Date(entry.date).toLocaleDateString()} - Mood {entry.mood_score}/10 - Stress {entry.stress_level}/10
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMoodEntry(entry.id)}
+                            className="p-2"
+                            style={{ color: "#E07C6B" }}
+                            aria-label="Delete mood entry"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleClearLocalDrafts}
+                  className="flex items-center gap-3 w-full p-4 hover:bg-gray-50 transition-all text-left"
+                  style={{ borderRadius: "12px" }}
+                >
+                  <Trash2 size={20} style={{ color: "#9BAABB" }} />
+                  <div className="flex-1">
+                    <div style={{ color: "var(--aura-text-primary)" }}>
+                      Clear Local Drafts
+                    </div>
+                    <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                      Remove unsent chat drafts stored in this browser only
                     </div>
                   </div>
                 </button>
@@ -882,10 +1042,11 @@ export default function ManageProfile() {
 
               <button
                 onClick={handleDeleteAccount}
+                disabled={isDeletingAccount}
                 className="px-6 py-3 text-white hover:opacity-90 transition-all"
                 style={{ background: "#E07C6B", borderRadius: "12px" }}
               >
-                Delete My Account
+                {isDeletingAccount ? "Deleting..." : "Delete My Account"}
               </button>
             </motion.div>
 

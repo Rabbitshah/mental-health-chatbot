@@ -31,7 +31,7 @@ def _patched_checkpw(password, hashed_password):
 _bcrypt_compat.checkpw = _patched_checkpw
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, event, StaticPool
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
@@ -69,6 +69,8 @@ _TABLES = [
     Base.metadata.tables["chat_messages"],
     Base.metadata.tables["mood_entries"],
     Base.metadata.tables["refresh_tokens"],
+    Base.metadata.tables["safety_plans"],
+    Base.metadata.tables["journal_entries"],
 ]
 
 
@@ -220,7 +222,7 @@ class TestLoginEndpoint:
             record = db.query(RefreshToken).filter(RefreshToken.token == token_value).first()
             assert record is not None, "refresh token not found in DB"
             assert record.revoked is False
-            assert record.expires_at > datetime.utcnow()
+            assert record.expires_at > datetime.now(timezone.utc).replace(tzinfo=None).replace(tzinfo=None)
         finally:
             db.close()
 
@@ -267,7 +269,7 @@ class TestTokenRefreshEndpoint:
         try:
             record = db.query(RefreshToken).filter(RefreshToken.token == refresh_token).first()
             assert record is not None
-            record.expires_at = datetime.utcnow() - timedelta(days=1)
+            record.expires_at = datetime.now(timezone.utc).replace(tzinfo=None).replace(tzinfo=None) - timedelta(days=1)
             db.commit()
         finally:
             db.close()
@@ -283,10 +285,15 @@ class TestTokenRefreshEndpoint:
             json={"email": registered_user["email"], "password": registered_user["password"]},
         )
         assert login.status_code == 200
+        access_token = login.json()["token"]
         refresh_token = login.json()["refresh_token"]
 
-        # Revoke via logout
-        client.post("/logout", json={"refresh_token": refresh_token})
+        # Revoke via logout (requires auth)
+        client.post(
+            "/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
 
         resp = client.post("/auth/refresh", json={"refresh_token": refresh_token})
         assert resp.status_code == 401
@@ -307,9 +314,14 @@ class TestLogoutEndpoint:
             json={"email": registered_user["email"], "password": registered_user["password"]},
         )
         assert login.status_code == 200
+        access_token = login.json()["token"]
         refresh_token = login.json()["refresh_token"]
 
-        logout_resp = client.post("/logout", json={"refresh_token": refresh_token})
+        logout_resp = client.post(
+            "/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
         assert logout_resp.status_code == 200
         assert "Logged out" in logout_resp.json()["msg"]
 
@@ -328,9 +340,14 @@ class TestLogoutEndpoint:
             json={"email": registered_user["email"], "password": registered_user["password"]},
         )
         assert login.status_code == 200
+        access_token = login.json()["token"]
         refresh_token = login.json()["refresh_token"]
 
-        client.post("/logout", json={"refresh_token": refresh_token})
+        client.post(
+            "/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
 
         resp = client.post("/auth/refresh", json={"refresh_token": refresh_token})
         assert resp.status_code == 401

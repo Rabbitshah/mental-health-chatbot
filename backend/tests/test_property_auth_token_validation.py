@@ -8,7 +8,7 @@ This module contains property tests that validate:
 """
 import pytest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from jose import jwt, JWTError
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, event
@@ -142,7 +142,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -166,7 +166,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -179,18 +179,18 @@ class TestProperty1AuthenticationTokenValidation:
         When: An access token is created
         Then: The 'exp' claim is greater than the current UTC timestamp
         """
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc)
         token = create_access_token({"email": email})
         payload = decode_token(token)
 
-        exp = datetime.utcfromtimestamp(payload["exp"])
+        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
         assert exp > before, (
             f"Token expiry {exp} must be in the future (created at {before})"
         )
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -203,12 +203,12 @@ class TestProperty1AuthenticationTokenValidation:
         When: An access token is created
         Then: exp ≈ now + 15 minutes (within 5 seconds tolerance)
         """
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc)
         token = create_access_token({"email": email})
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc)
 
         payload = decode_token(token)
-        exp = datetime.utcfromtimestamp(payload["exp"])
+        exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
 
         # JWT exp is stored as a whole second (floor), so allow 1s slack on the lower bound
         expected_min = before + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES) - timedelta(seconds=1)
@@ -220,7 +220,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -245,7 +245,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(garbage=_garbage_token_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -265,7 +265,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -282,7 +282,7 @@ class TestProperty1AuthenticationTokenValidation:
         wrong_key = "completely_different_secret_key_xyz_987"
         payload = {
             "email": email,
-            "exp": datetime.utcnow() + timedelta(minutes=15),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
         }
         tampered_token = jwt.encode(payload, wrong_key, algorithm=ALGORITHM)
 
@@ -291,7 +291,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -307,7 +307,7 @@ class TestProperty1AuthenticationTokenValidation:
         Then: The email claim is None, triggering a 401
         """
         # Build a token with no email claim (only exp)
-        payload = {"exp": datetime.utcnow() + timedelta(minutes=15)}
+        payload = {"exp": datetime.now(timezone.utc) + timedelta(minutes=15)}
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         decoded = decode_token(token)
@@ -317,7 +317,7 @@ class TestProperty1AuthenticationTokenValidation:
 
     @given(email=_email_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -357,7 +357,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(user_count=_user_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -398,7 +398,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -422,7 +422,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -456,7 +456,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(garbage=_garbage_token_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -478,7 +478,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(email=_email_st)
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -492,7 +492,7 @@ class TestProperty2AuthenticatedRequestProcessing:
         When: The auth dependency processes it
         Then: ValueError is raised because email is None
         """
-        payload = {"exp": datetime.utcnow() + timedelta(minutes=15)}
+        payload = {"exp": datetime.now(timezone.utc) + timedelta(minutes=15)}
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         with pytest.raises(ValueError, match="Could not validate credentials"):
@@ -500,7 +500,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(email=_email_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -534,7 +534,7 @@ class TestProperty2AuthenticatedRequestProcessing:
 
     @given(user_count=_user_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

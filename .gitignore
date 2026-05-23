@@ -1,2 +1,33 @@
-.vscode/settings.json
-.idx/dev.nix
+# VS Code & IDE
+.vscode/
+.idx/
+.agent/
+.claude/
+
+# Graphify Outputs
+graphify-out/
+.graphify_uncached.txt
+viz_fix.py
+*.webp
+
+# Python / Backend
+backend/__pycache__/
+backend/.venv/
+backend/venv/
+backend/.env
+backend/.pytest_cache/
+backend/.hypothesis/
+backend/*.db
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Junk
+undefined/
+
+# OS Files
+.DS_Store
+Thumbs.db
+.gitnexus

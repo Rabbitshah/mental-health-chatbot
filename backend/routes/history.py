@@ -6,19 +6,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from database import get_db
 from models import ChatSession, ChatMessage, User
 from dependencies import get_current_user
-from redis_client import cache_get, cache_set, cache_delete, CacheKeys, CacheTTL
+from redis_client import cache_get, cache_set, cache_delete, CacheKeys, CacheTTL, invalidate_user_caches
+from constants import ALLOWED_TAGS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/history")
-
-# Subtask 9.1: Allowed session tag values
-ALLOWED_TAGS = ["General", "Anxiety", "Stress", "Depression", "Sleep", "Relationships", "Work", "Other"]
 
 class MessageResponse(BaseModel):
     id: int
@@ -26,13 +24,13 @@ class MessageResponse(BaseModel):
     text: str
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class SessionResponse(BaseModel):
     id: int
     title: str
     tag: Optional[str] = None
+    summary: Optional[str] = None
     is_pinned: bool = False
     is_archived: bool = False
     created_at: datetime
@@ -40,8 +38,7 @@ class SessionResponse(BaseModel):
     message_count: int = 0
     preview: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class SessionUpdateRequest(BaseModel):
     title: Optional[str] = None
@@ -57,34 +54,73 @@ class SessionStatusRequest(BaseModel):
     is_pinned: Optional[bool] = None
     is_archived: Optional[bool] = None
 
+from sqlalchemy import func, and_
+
 class PaginatedSessionResponse(BaseModel):
     total: int
     page: int
     page_size: int
     sessions: List[SessionResponse]
 
-def build_session_response(db: Session, session: ChatSession) -> SessionResponse:
-    message_count = db.query(ChatMessage).filter(ChatMessage.session_id == session.id).count()
-    first_ai_msg = (
+
+def _build_session_responses_batch(db: Session, sessions: list) -> list:
+    """
+    Build SessionResponse objects for a list of sessions using 2 queries
+    instead of 2*N (eliminates the N+1 problem).
+    """
+    if not sessions:
+        return []
+
+    session_ids = [s.id for s in sessions]
+
+    # Single query: message counts per session
+    counts = (
+        db.query(ChatMessage.session_id, func.count(ChatMessage.id).label("cnt"))
+        .filter(ChatMessage.session_id.in_(session_ids))
+        .group_by(ChatMessage.session_id)
+        .all()
+    )
+    count_map = {row.session_id: row.cnt for row in counts}
+
+    # Single query: first AI message per session (using a subquery for min id)
+    from sqlalchemy import select as sa_select
+    min_ai_ids_subq = (
+        sa_select(func.min(ChatMessage.id))
+        .where(
+            ChatMessage.session_id.in_(session_ids),
+            ChatMessage.sender == "ai",
+        )
+        .group_by(ChatMessage.session_id)
+        .scalar_subquery()
+    )
+    first_ai_msgs = (
         db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session.id, ChatMessage.sender == "ai")
-        .order_by(ChatMessage.created_at.asc())
-        .first()
+        .filter(ChatMessage.id.in_(min_ai_ids_subq))
+        .all()
     )
+    preview_map = {msg.session_id: msg.text[:100] + "..." for msg in first_ai_msgs}
 
-    preview = first_ai_msg.text[:100] + "..." if first_ai_msg else "Started a new conversation..."
+    return [
+        SessionResponse(
+            id=s.id,
+            title=s.title,
+            tag=s.tag,
+            summary=s.summary,
+            is_pinned=s.is_pinned,
+            is_archived=s.is_archived,
+            created_at=s.created_at,
+            updated_at=s.updated_at,
+            message_count=count_map.get(s.id, 0),
+            preview=preview_map.get(s.id, "Started a new conversation..."),
+        )
+        for s in sessions
+    ]
 
-    return SessionResponse(
-        id=session.id,
-        title=session.title,
-        tag=session.tag,
-        is_pinned=session.is_pinned,
-        is_archived=session.is_archived,
-        created_at=session.created_at,
-        updated_at=session.updated_at,
-        message_count=message_count,
-        preview=preview,
-    )
+
+def build_session_response(db: Session, session: ChatSession) -> SessionResponse:
+    """Single-session helper (used outside list endpoints)."""
+    responses = _build_session_responses_batch(db, [session])
+    return responses[0]
 
 @router.get("/", response_model=PaginatedSessionResponse)
 def get_all_sessions(
@@ -101,12 +137,15 @@ def get_all_sessions(
 
     if use_cache:
         cache_key = CacheKeys.SESSION_LIST.format(user_id=current_user.id)
-        cached = cache_get(cache_key)
-        if cached is not None:
-            try:
-                return json.loads(cached)
-            except (json.JSONDecodeError, Exception) as e:
-                logger.warning(f"Failed to deserialize cached session list for user {current_user.id}: {e}")
+        try:
+            cached = cache_get(cache_key)
+            if cached is not None:
+                try:
+                    return json.loads(cached)
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"Failed to deserialize cached session list for user {current_user.id}: {e}")
+        except Exception as e:
+            logger.warning(f"Cache GET failed for session list (user {current_user.id}): {e}")
 
     sessions_query = db.query(ChatSession).filter(ChatSession.user_id == current_user.id)
     if not include_archived:
@@ -130,7 +169,7 @@ def get_all_sessions(
 
     total = sessions_query.count()
     sessions = sessions_query.offset((page - 1) * page_size).limit(page_size).all()
-    session_list = [build_session_response(db, session) for session in sessions]
+    session_list = _build_session_responses_batch(db, sessions)
 
     result = PaginatedSessionResponse(
         total=total,
@@ -174,7 +213,7 @@ def delete_sessions_bulk(
     db.commit()
 
     try:
-        cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+        invalidate_user_caches(current_user.id)
     except Exception as e:
         logger.warning(f"Cache invalidation failed after bulk delete for user {current_user.id}: {e}")
 
@@ -214,13 +253,13 @@ def rename_session(session_id: int, request: SessionUpdateRequest, db: Session =
         chat_session.tag = request.tag
 
     # Subtask 9.2: Update updated_at timestamp
-    chat_session.updated_at = datetime.utcnow()
+    chat_session.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(chat_session)
 
     try:
-        cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+        invalidate_user_caches(current_user.id)
     except Exception as e:
         logger.warning(f"Cache invalidation failed after rename for session {session_id}: {e}")
 
@@ -249,7 +288,7 @@ def update_session_status(
     db.refresh(chat_session)
 
     try:
-        cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+        invalidate_user_caches(current_user.id)
     except Exception as e:
         logger.warning(f"Cache invalidation failed after status update for session {session_id}: {e}")
 
@@ -265,7 +304,7 @@ def delete_session(session_id: int, db: Session = Depends(get_db), current_user:
     db.commit()
 
     try:
-        cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+        invalidate_user_caches(current_user.id)
     except Exception as e:
         logger.warning(f"Cache invalidation failed after delete for session {session_id}: {e}")
 
@@ -282,7 +321,7 @@ def delete_all_sessions(db: Session = Depends(get_db), current_user: User = Depe
     db.commit()
 
     try:
-        cache_delete(CacheKeys.SESSION_LIST.format(user_id=current_user.id))
+        invalidate_user_caches(current_user.id)
     except Exception as e:
         logger.warning(f"Cache invalidation failed after delete-all for user {current_user.id}: {e}")
 

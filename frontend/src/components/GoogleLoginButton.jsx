@@ -9,7 +9,10 @@ const GoogleLoginButton = () => {
         credential: credentialResponse.credential,
       });
   
-      localStorage.setItem("token", res.data.token);
+      localStorage.setItem("token", res.data.access_token || res.data.token);
+      if (res.data.refresh_token) {
+        localStorage.setItem("refresh_token", res.data.refresh_token);
+      }
       localStorage.setItem("user", JSON.stringify(res.data.user));
       window.location.href = "/dashboard";
     } catch (err) {

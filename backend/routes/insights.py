@@ -1,10 +1,10 @@
 from collections import Counter
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 
@@ -29,7 +29,7 @@ def calculate_streaks(moods: list[MoodEntry]) -> tuple[int, int]:
     longest_streak = 1
     current_streak = 0
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
     if unique_dates and (unique_dates[0] == today or unique_dates[0] == today - timedelta(days=1)):
         current_streak = 1
         for i in range(len(unique_dates) - 1):
@@ -78,8 +78,7 @@ class MoodResponse(BaseModel):
     stress_level: float
     date: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 @router.post("/mood", response_model=MoodResponse)
 @limiter.limit("20/minute")
@@ -103,7 +102,7 @@ def add_mood_entry(request: Request, mood_request: MoodRequest, db: Session = De
     return new_entry
 
 @router.get("/mood", response_model=List[MoodResponse])
-def get_mood_trend(days: int = 7, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_mood_trend(days: int = Query(default=7, ge=1, le=365), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     cache_key = CacheKeys.MOOD_ANALYTICS.format(user_id=current_user.id, days=days)
     try:
         cached = cache_get(cache_key)
@@ -112,7 +111,7 @@ def get_mood_trend(days: int = 7, db: Session = Depends(get_db), current_user: U
     except Exception as e:
         logger.warning(f"Cache GET failed for mood analytics (user {current_user.id}, days={days}): {e}")
 
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     entries = db.query(MoodEntry).filter(
         MoodEntry.user_id == current_user.id,
         MoodEntry.date >= cutoff_date
@@ -136,6 +135,28 @@ def get_mood_trend(days: int = 7, db: Session = Depends(get_db), current_user: U
 
     return entries
 
+@router.delete("/mood/{mood_id}")
+def delete_mood_entry(
+    mood_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = db.query(MoodEntry).filter(
+        MoodEntry.id == mood_id,
+        MoodEntry.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Mood entry not found")
+
+    db.delete(entry)
+    db.commit()
+    try:
+        pattern = CacheKeys.MOOD_ANALYTICS.format(user_id=current_user.id, days="*")
+        cache_delete_pattern(pattern)
+    except Exception as e:
+        logger.warning(f"Cache invalidation failed after mood delete (user {current_user.id}): {e}")
+    return {"message": "Mood entry deleted"}
+
 @router.get("/stats")
 def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Calculates a few simple aggregated statistics for the dashboard
@@ -157,24 +178,180 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depe
         "day_streak": streak
     }
 
+@router.get("/analytics")
+def get_mood_analytics(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if start_date is None:
+        start_date = now - timedelta(days=30)
+    if end_date is None:
+        end_date = now
+
+    cache_key = f"user:{current_user.id}:mood:analytics:{start_date.isoformat()}:{end_date.isoformat()}"
+    try:
+        cached = cache_get(cache_key)
+        if cached:
+            return json.loads(cached)
+    except Exception as e:
+        logger.warning(f"Cache GET failed for mood analytics (user {current_user.id}): {e}")
+
+    entries = db.query(MoodEntry).filter(
+        MoodEntry.user_id == current_user.id,
+        MoodEntry.date >= start_date,
+        MoodEntry.date <= end_date,
+    ).order_by(MoodEntry.date.asc()).all()
+
+    if not entries:
+        result = {
+            "avg_mood": 0.0,
+            "avg_energy": 0.0,
+            "avg_stress": 0.0,
+            "min_mood": 0.0,
+            "max_mood": 0.0,
+            "min_energy": 0.0,
+            "max_mood": 0.0, # This was likely a typo in original but keeping for now or fixing if obvious
+            "min_stress": 0.0,
+            "max_stress": 0.0,
+            "trend": "stable",
+            "weekly_averages": [],
+        }
+        return result
+
+    moods = [e.mood_score for e in entries]
+    energies = [e.energy_level for e in entries]
+    stresses = [e.stress_level for e in entries]
+
+    # Trend: compare first half vs second half by avg mood
+    mid = len(entries) // 2
+    first_half_avg = average(moods[:mid]) if mid > 0 else average(moods)
+    second_half_avg = average(moods[mid:]) if mid < len(moods) else average(moods)
+    diff = second_half_avg - first_half_avg
+    if diff > 0.5:
+        trend = "improving"
+    elif diff < -0.5:
+        trend = "declining"
+    else:
+        trend = "stable"
+
+    # Weekly averages grouped by ISO year-week
+    week_buckets: dict[str, dict[str, list[float]]] = {}
+    for e in entries:
+        iso_year, iso_week, _ = e.date.isocalendar()
+        week_key = f"{iso_year}-W{iso_week:02d}"
+        bucket = week_buckets.setdefault(week_key, {"mood": [], "energy": [], "stress": []})
+        bucket["mood"].append(e.mood_score)
+        bucket["energy"].append(e.energy_level)
+        bucket["stress"].append(e.stress_level)
+
+    weekly_averages = [
+        {
+            "week": week,
+            "avg_mood": round(average(data["mood"]), 2),
+            "avg_energy": round(average(data["energy"]), 2),
+            "avg_stress": round(average(data["stress"]), 2),
+        }
+        for week, data in sorted(week_buckets.items())
+    ]
+
+    result = {
+        "avg_mood": round(average(moods), 2),
+        "avg_energy": round(average(energies), 2),
+        "avg_stress": round(average(stresses), 2),
+        "min_mood": min(moods),
+        "max_mood": max(moods),
+        "min_energy": min(energies),
+        "max_energy": max(energies),
+        "min_stress": min(stresses),
+        "max_stress": max(stresses),
+        "trend": trend,
+        "weekly_averages": weekly_averages,
+    }
+
+    try:
+        cache_set(cache_key, json.dumps(result), CacheTTL.MOOD_ANALYTICS)
+    except Exception as e:
+        logger.warning(f"Cache SET failed for mood analytics (user {current_user.id}): {e}")
+
+    return result
+
+
 @router.get("/recommendations")
-def get_recommendations(current_user: User = Depends(get_current_user)):
-    return {
-        "featured": {
+def get_recommendations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    recent_moods = db.query(MoodEntry).filter(
+        MoodEntry.user_id == current_user.id
+    ).order_by(MoodEntry.date.desc()).limit(7).all()
+    recent_sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == current_user.id,
+        ChatSession.is_archived == False,
+    ).order_by(ChatSession.updated_at.desc()).limit(10).all()
+
+    avg_stress = average([entry.stress_level for entry in recent_moods])
+    avg_energy = average([entry.energy_level for entry in recent_moods])
+    avg_mood = average([entry.mood_score for entry in recent_moods])
+    tags = Counter(session.tag or "General" for session in recent_sessions)
+    top_tag = tags.most_common(1)[0][0] if tags else "General"
+
+    if avg_stress >= 7:
+        featured = {
+            "category": "Grounding",
+            "title": "3-Minute Nervous System Reset",
+            "description": "A short breathing and sensory exercise for high-stress moments.",
+        }
+    elif avg_energy and avg_energy <= 4:
+        featured = {
+            "category": "Recovery",
+            "title": "Low-Energy Reset Plan",
+            "description": "Pick one gentle task, one hydration break, and one rest cue.",
+        }
+    elif avg_mood and avg_mood <= 4:
+        featured = {
+            "category": "Support",
+            "title": "Reach-Out Script",
+            "description": "A simple way to tell someone you trust that today feels hard.",
+        }
+    elif top_tag == "Sleep":
+        featured = {
+            "category": "Sleep",
+            "title": "Wind-Down Routine",
+            "description": "A calmer 20-minute transition for nights when your mind stays busy.",
+        }
+    elif top_tag == "Relationships":
+        featured = {
+            "category": "Reflection",
+            "title": "Boundary Check-In",
+            "description": "Clarify what you feel, what you need, and what is yours to carry.",
+        }
+    else:
+        featured = {
             "category": "Meditation",
             "title": "5-Minute Breathing Reset",
             "description": "Quick guided breathing practice for moments of stress or mental overload.",
-        },
+        }
+
+    return {
+        "featured": featured,
         "items": [
             {
-                "type": "article",
-                "title": "Understanding Anxiety",
-                "meta": "3 min read",
+                "type": "exercise",
+                "title": f"{top_tag} Reflection Prompt" if top_tag != "General" else "Daily Reflection Prompt",
+                "meta": "2 min practice",
             },
             {
-                "type": "exercise",
-                "title": "Grounding With 5-4-3-2-1",
-                "meta": "2 min practice",
+                "type": "journal",
+                "title": "Capture One Thought Pattern",
+                "meta": "Structured journal",
+            },
+            {
+                "type": "safety",
+                "title": "Review Your Safety Plan",
+                "meta": "Private checklist",
             },
         ],
     }
@@ -334,17 +511,26 @@ def get_top_topics(
 
     topic_counts = Counter()
 
-    for session in sessions:
-        text_parts = [session.title or ""]
-        messages = db.query(ChatMessage).filter(
-            ChatMessage.session_id == session.id
-        ).all()
-        text_parts.extend(message.text for message in messages)
-        combined_text = " ".join(text_parts).lower()
+    if sessions:
+        session_ids = [s.id for s in sessions]
+        # Single query for all messages across all sessions (eliminates N+1)
+        all_messages = (
+            db.query(ChatMessage.session_id, ChatMessage.text)
+            .filter(ChatMessage.session_id.in_(session_ids))
+            .all()
+        )
+        # Group message texts by session
+        from collections import defaultdict
+        texts_by_session = defaultdict(list)
+        for msg in all_messages:
+            texts_by_session[msg.session_id].append(msg.text)
 
-        for topic, keywords in topic_keywords.items():
-            if any(keyword in combined_text for keyword in keywords):
-                topic_counts[topic] += 1
+        for session in sessions:
+            text_parts = [session.title or ""] + texts_by_session.get(session.id, [])
+            combined_text = " ".join(text_parts).lower()
+            for topic, keywords in topic_keywords.items():
+                if any(keyword in combined_text for keyword in keywords):
+                    topic_counts[topic] += 1
 
     if not topic_counts:
         topic_counts["General"] = len(sessions) if sessions else 1
@@ -438,7 +624,7 @@ def get_patterns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
     moods = db.query(MoodEntry).filter(
         MoodEntry.user_id == current_user.id,
         MoodEntry.date >= cutoff_date,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -23,6 +23,7 @@ export default function History() {
   const [selectedFilter, setSelectedFilter] = useState("all");
   const [showArchived, setShowArchived] = useState(false);
   const [chats, setChats] = useState([]);
+  const [searchResults, setSearchResults] = useState(null); // null = not searching
   const [selectedChatIds, setSelectedChatIds] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -32,15 +33,7 @@ export default function History() {
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState("");
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      fetchHistory(searchQuery);
-    }, 250);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery, showArchived]);
-
-  const fetchHistory = async (query = "") => {
+  const fetchHistory = useCallback(async (query = "") => {
     setIsLoading(true);
     setLoadError("");
     try {
@@ -51,10 +44,12 @@ export default function History() {
           include_archived: showArchived,
         },
       });
-      setChats(data.map(chat => ({
+      const sessions = data.sessions ?? data;
+      setChats(sessions.map(chat => ({
         id: chat.id,
         title: chat.title,
         preview: chat.preview || "Started a new conversation...",
+        summary: chat.summary || null,
         date: new Date(chat.created_at).toLocaleDateString(),
         createdAt: chat.created_at,
         tag: chat.tag || "General",
@@ -62,13 +57,35 @@ export default function History() {
         isPinned: chat.is_pinned,
         isArchived: chat.is_archived,
       })));
+
+      // Also fetch search results with snippets when query is present
+      if (trimmedQuery) {
+        try {
+          const { data: searchData } = await API.get("/search", {
+            params: { q: trimmedQuery },
+          });
+          setSearchResults(searchData);
+        } catch {
+          setSearchResults(null);
+        }
+      } else {
+        setSearchResults(null);
+      }
     } catch (e) {
       console.error(e);
       setLoadError("We couldn't load your saved conversations right now.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showArchived]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchHistory(searchQuery);
+    }, 250);
+
+    return () => clearTimeout(timeoutId);
+  }, [fetchHistory, searchQuery]);
 
   const handleDelete = async (id) => {
     if (confirm("Are you sure you want to delete this conversation?")) {
@@ -184,6 +201,20 @@ export default function History() {
     } catch (e) {
       console.error(e);
       setLoadError("We couldn't update that conversation right now.");
+    }
+  };
+
+  const handleTagUpdate = async (id, newTag) => {
+    try {
+      await API.put(`/history/${id}`, { tag: newTag });
+      setChats((current) =>
+        current.map((chat) =>
+          chat.id === id ? { ...chat, tag: newTag } : chat,
+        ),
+      );
+      window.dispatchEvent(new Event("sessions-updated"));
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -407,6 +438,28 @@ export default function History() {
                   ? "History unavailable"
                   : `${filteredChats.length} ${filteredChats.length === 1 ? "conversation" : "conversations"} found${searchQuery.trim() ? ` for "${searchQuery.trim()}"` : ""}${showArchived ? " in archived chats" : ""}`}
               </span>
+              {searchResults && searchResults.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs font-medium" style={{ color: "var(--aura-text-secondary)" }}>
+                    Matching messages:
+                  </p>
+                  {searchResults.slice(0, 5).map((result) => (
+                    <div
+                      key={`${result.session_id}-${result.created_at}`}
+                      className="px-3 py-2 cursor-pointer hover:bg-blue-50 transition-all"
+                      style={{ borderRadius: "8px", border: "1px solid #E0E7EF" }}
+                      onClick={() => navigate(`/chat/${result.session_id}`)}
+                    >
+                      <p className="text-xs font-medium mb-0.5" style={{ color: "#4A90D9" }}>
+                        {result.session_title}
+                      </p>
+                      <p className="text-xs" style={{ color: "var(--aura-text-secondary)" }}>
+                        {result.message_snippet}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
 
@@ -592,20 +645,26 @@ export default function History() {
                             className="text-sm mb-3 line-clamp-2"
                             style={{ color: "var(--aura-text-secondary)" }}
                           >
-                            {chat.preview}
+                            {chat.summary || chat.preview}
                           </p>
                           <div className="flex items-center gap-3 flex-wrap">
-                            <span
-                              className="text-xs px-3 py-1"
-                              style={{
-                                background: `${getTagColor(chat.tag)}15`,
-                                color: getTagColor(chat.tag),
-                                borderRadius: "8px",
-                              }}
-                            >
-                              <Tag size={12} className="inline mr-1" />
-                              {chat.tag}
-                            </span>
+                            <div className="relative" onClick={(e) => e.stopPropagation()}>
+                              <select
+                                value={chat.tag}
+                                onChange={(e) => handleTagUpdate(chat.id, e.target.value)}
+                                className="text-xs px-3 py-1 appearance-none cursor-pointer focus:outline-none"
+                                style={{
+                                  background: `${getTagColor(chat.tag)}15`,
+                                  color: getTagColor(chat.tag),
+                                  borderRadius: "8px",
+                                  border: `1px solid ${getTagColor(chat.tag)}30`,
+                                }}
+                              >
+                                {["General", "Anxiety", "Stress", "Depression", "Sleep", "Relationships", "Work", "Other"].map((t) => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
+                              </select>
+                            </div>
                             <span className="text-xs" style={{ color: "#9BAABB" }}>
                               <Calendar size={12} className="inline mr-1" />
                               {chat.date}

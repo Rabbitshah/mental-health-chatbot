@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import os
 import secrets
@@ -11,14 +11,14 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your_default_secret_key")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Updated from 60 to 15 minutes
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -45,7 +45,7 @@ def create_refresh_token(user_id: int, db: Session) -> str:
     token = secrets.token_urlsafe(32)
     
     # Calculate expiry
-    expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     
     # Store in database
     refresh_token = RefreshToken(
@@ -86,7 +86,7 @@ def validate_refresh_token(token: str, db: Session):
     if refresh_token.revoked:
         raise ValueError("Refresh token has been revoked")
     
-    if refresh_token.expires_at < datetime.utcnow():
+    if refresh_token.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise ValueError("Refresh token has expired")
     
     # Get the associated user

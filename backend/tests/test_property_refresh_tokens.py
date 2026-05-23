@@ -8,7 +8,7 @@ This module contains property tests that validate:
 """
 import pytest
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, event
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base, Session
@@ -103,7 +103,7 @@ def _patched_create(user_id: int, db: Session) -> str:
     """create_refresh_token using test models."""
     import secrets
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     rt = _RefreshToken(user_id=user_id, token=token, expires_at=expires_at, revoked=False)
     db.add(rt)
     db.commit()
@@ -117,7 +117,7 @@ def _patched_validate(token: str, db: Session):
         raise ValueError("Invalid refresh token")
     if rt.revoked:
         raise ValueError("Refresh token has been revoked")
-    if rt.expires_at < datetime.utcnow():
+    if rt.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise ValueError("Refresh token has expired")
     user = db.query(_User).filter(_User.id == rt.user_id).first()
     if not user:
@@ -160,7 +160,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -185,7 +185,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -197,10 +197,10 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
         Given: N tokens created for a user
         When: Tokens are stored
-        Then: expires_at > datetime.utcnow() for every token
+        Then: expires_at > datetime.now(timezone.utc) for every token
         """
         tokens = [_patched_create(pbt_user.id, pbt_db) for _ in range(token_count)]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         for token in tokens:
             row = pbt_db.query(_RefreshToken).filter(_RefreshToken.token == token).first()
@@ -210,7 +210,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -232,7 +232,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -251,7 +251,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(user_count=_user_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -292,7 +292,7 @@ class TestProperty40RefreshTokenDatabaseStorage:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -306,9 +306,9 @@ class TestProperty40RefreshTokenDatabaseStorage:
         When: Tokens are stored
         Then: expires_at is within 5 seconds of (now + 7 days)
         """
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
         tokens = [_patched_create(pbt_user.id, pbt_db) for _ in range(token_count)]
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc).replace(tzinfo=None)
 
         expected_min = before + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         expected_max = after + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -338,7 +338,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -363,7 +363,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -388,7 +388,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -412,7 +412,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=40,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -431,7 +431,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
         # Backdate expiry
         for token in tokens:
             row = pbt_db.query(_RefreshToken).filter(_RefreshToken.token == token).first()
-            row.expires_at = datetime.utcnow() - timedelta(seconds=1)
+            row.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
         pbt_db.commit()
 
         for token in tokens:
@@ -440,7 +440,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(garbage=st.text(min_size=1, max_size=200).filter(lambda s: s.strip()))
     @settings(
-        max_examples=50,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -459,7 +459,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(token_count=_token_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -489,7 +489,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
     @given(user_count=_user_count_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

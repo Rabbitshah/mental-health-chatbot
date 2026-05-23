@@ -1,7 +1,7 @@
 import sys
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 
 # Add parent directory to sys.path to import modules
@@ -36,7 +36,7 @@ def populate():
             password=VALID_BCRYPT_HASH,
             name="Mock User",
             username="mock_explorer",
-            created_at=datetime.utcnow() - timedelta(days=30)
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
         )
         db.add(user)
         db.commit()
@@ -46,7 +46,7 @@ def populate():
         print("Generating mood entries...")
         mood_data = []
         for i in range(30):
-            date = datetime.utcnow() - timedelta(days=i)
+            date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=i)
             # Create some realistic trends (e.g., mood varies but generally improves)
             base_mood = 5 + (i * 0.1) if i < 15 else 8 - ((i-15) * 0.05)
             mood_entry = MoodEntry(
@@ -73,7 +73,7 @@ def populate():
             session = ChatSession(
                 user_id=user.id,
                 title=title,
-                created_at=datetime.utcnow() - timedelta(days=random.randint(1, 20))
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=random.randint(1, 20))
             )
             db.add(session)
             db.commit()

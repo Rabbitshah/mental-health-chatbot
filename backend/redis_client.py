@@ -14,6 +14,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+# Set REDIS_ENABLED=false to disable Redis entirely (e.g. in test environments)
+REDIS_ENABLED = os.getenv("REDIS_ENABLED", "true").lower() not in ("false", "0", "no")
 
 # Connection retry configuration
 REDIS_MAX_RETRIES = int(os.getenv("REDIS_MAX_RETRIES", "3"))
@@ -21,6 +23,11 @@ REDIS_RETRY_DELAY = float(os.getenv("REDIS_RETRY_DELAY", "0.5"))  # seconds
 
 # Global Redis client instance
 _redis_client: Optional[redis.Redis] = None
+# Sentinel: set to True after all retries are exhausted so we skip future attempts
+_redis_unavailable: bool = False
+# Timestamp of last unavailability — retry after this many seconds
+_REDIS_RETRY_AFTER: float = 30.0
+_redis_unavailable_since: float = 0.0
 
 
 def get_redis_client() -> Optional[redis.Redis]:
@@ -28,7 +35,18 @@ def get_redis_client() -> Optional[redis.Redis]:
     Get Redis client with connection pooling, timeout, and retry logic.
     Returns None if Redis is unavailable (graceful degradation per Requirement 12.5).
     """
-    global _redis_client
+    global _redis_client, _redis_unavailable, _redis_unavailable_since
+
+    # Fast-path: Redis disabled via environment variable
+    if not REDIS_ENABLED:
+        return None
+
+    # Fast-path: skip retries if Redis was recently found unavailable
+    if _redis_unavailable:
+        if time.time() - _redis_unavailable_since < _REDIS_RETRY_AFTER:
+            return None
+        # Retry after cool-down period
+        _redis_unavailable = False
 
     if _redis_client is not None:
         # Verify the existing connection is still alive
@@ -47,14 +65,15 @@ def get_redis_client() -> Optional[redis.Redis]:
                 password=REDIS_PASSWORD,
                 db=REDIS_DB,
                 decode_responses=True,
-                socket_connect_timeout=5,
-                socket_timeout=5,
+                socket_connect_timeout=2,
+                socket_timeout=2,
                 health_check_interval=30,
-                retry_on_timeout=True,
+                retry_on_timeout=False,
             )
             # Test connection
             client.ping()
             _redis_client = client
+            _redis_unavailable = False
             logger.info(f"Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}")
             return _redis_client
         except (redis.ConnectionError, redis.TimeoutError) as e:
@@ -70,12 +89,14 @@ def get_redis_client() -> Optional[redis.Redis]:
         "Redis unavailable after %d attempts. Continuing without caching (graceful degradation).",
         REDIS_MAX_RETRIES,
     )
+    _redis_unavailable = True
+    _redis_unavailable_since = time.time()
     return None
 
 
 def close_redis_connection() -> None:
     """Close Redis connection on application shutdown."""
-    global _redis_client
+    global _redis_client, _redis_unavailable, _redis_unavailable_since
     if _redis_client:
         try:
             _redis_client.close()
@@ -84,6 +105,8 @@ def close_redis_connection() -> None:
             logger.warning(f"Error closing Redis connection: {e}")
         finally:
             _redis_client = None
+    _redis_unavailable = False
+    _redis_unavailable_since = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +169,12 @@ def cache_delete_pattern(pattern: str) -> int:
     if client is None:
         return 0
     try:
-        keys = client.keys(pattern)
-        if keys:
-            return client.delete(*keys)
-        return 0
+        deleted_count = 0
+        # Use scan_iter for production-safe iteration (O(N) vs blocking O(N))
+        for key in client.scan_iter(match=pattern, count=100):
+            if client.delete(key):
+                deleted_count += 1
+        return deleted_count
     except (redis.RedisError, Exception) as e:
         logger.warning(f"Cache DELETE pattern '{pattern}' failed: {e}")
         return 0
@@ -180,3 +205,16 @@ class CacheTTL:
     SESSION_DATA = 300   # 5 minutes   (Requirement 12.2)
     SESSION_MESSAGES = 300  # 5 minutes
     MOOD_ANALYTICS = 900  # 15 minutes (Requirement 12.6)
+
+
+def invalidate_user_caches(user_id: int, session_id: int | None = None) -> None:
+    """
+    Invalidate all caches associated with a user (and optionally a session).
+    Centralises cache invalidation so callers don't repeat key construction.
+    """
+    cache_delete(CacheKeys.SESSION_LIST.format(user_id=user_id))
+    cache_delete(CacheKeys.USER_PROFILE.format(user_id=user_id))
+    cache_delete_pattern(CacheKeys.MOOD_ANALYTICS.format(user_id=user_id, days="*"))
+    if session_id is not None:
+        cache_delete(CacheKeys.SESSION_DATA.format(session_id=session_id))
+        cache_delete(CacheKeys.SESSION_MESSAGES.format(session_id=session_id))

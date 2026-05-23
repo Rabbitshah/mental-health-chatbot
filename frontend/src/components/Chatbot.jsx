@@ -6,11 +6,20 @@ import {
   RefreshCw,
   Copy,
   Share2,
+  Phone,
+  X,
+  ShieldCheck,
+  Wind,
+  TimerReset,
+  HeartPulse,
 } from "lucide-react";
 import { motion } from "motion/react";
 import ReactMarkdown from "react-markdown";
 import API from "../api";
 import Sidebar from "./Sidebar";
+import CrisisBanner from "./CrisisBanner";
+import NotificationBell from "./NotificationBell";
+import { showToast } from "./Toast";
 
 export default function Chatbot() {
   const navigate = useNavigate();
@@ -19,14 +28,19 @@ export default function Chatbot() {
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [userName, setUserName] = useState("Jane Doe");
+  const [showCrisisBanner, setShowCrisisBanner] = useState(false);
+  const [showCrisisPanel, setShowCrisisPanel] = useState(false);
+  const [crisisResources, setCrisisResources] = useState([]);
+  const [activeSupportTool, setActiveSupportTool] = useState("grounding");
+  const [breathingActive, setBreathingActive] = useState(false);
   const messagesEndRef = useRef(null);
   const draftStorageKey = sessionId
     ? `aurachat-draft-${sessionId}`
     : "aurachat-draft-new";
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
+    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+    if (!isLoggedIn) {
       navigate("/login");
       return;
     }
@@ -113,6 +127,15 @@ export default function Chatbot() {
 
     if (!sessionId && res.data.session_id) {
       navigate(`/chat/${res.data.session_id}`, { replace: true });
+    }
+
+    // Notify Sidebar to refresh its session list
+    window.dispatchEvent(new Event("sessions-updated"));
+
+    if (res.data?.crisis_detected) {
+      setShowCrisisBanner(true);
+      setShowCrisisPanel(true);
+      setCrisisResources(res.data?.emergency_resources || []);
     }
 
     const aiText =
@@ -206,9 +229,10 @@ export default function Chatbot() {
 
     try {
       await navigator.clipboard.writeText(text);
+      showToast("Message copied.", "success");
     } catch (error) {
       console.error("Failed to copy message", error);
-      alert("Copy is not available right now.");
+      showToast("Copy is not available right now.");
     }
   };
 
@@ -228,7 +252,7 @@ export default function Chatbot() {
     }
 
     await handleCopyMessage(text);
-    alert("Sharing is not available here, so the message was copied instead.");
+    showToast("Sharing is unavailable here, so the message was copied.", "success");
   };
 
   const handleKeyDown = (e) => {
@@ -241,6 +265,15 @@ export default function Chatbot() {
 
   const handleSuggestionClick = (suggestion) => {
     setInputValue(suggestion);
+  };
+
+  const handleSupportToolPrompt = (prompt) => {
+    setInputValue(prompt);
+  };
+
+  const handleBreathingToggle = () => {
+    setBreathingActive((current) => !current);
+    setActiveSupportTool("breathing");
   };
 
   const suggestions = [
@@ -266,6 +299,7 @@ export default function Chatbot() {
           </h2>
 
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <div
               className="flex items-center gap-2 px-3 py-1.5"
               style={{
@@ -289,7 +323,30 @@ export default function Chatbot() {
           </div>
         </header>
 
+      {showCrisisBanner && (
+        <CrisisBanner onDismiss={() => setShowCrisisBanner(false)} />
+      )}
+      {showCrisisPanel && (
+        <CrisisSupportPanel
+          resources={crisisResources}
+          onDismiss={() => setShowCrisisPanel(false)}
+          onGrounding={() => {
+            setShowCrisisPanel(false);
+            handleSupportToolPrompt("Guide me through a short grounding exercise right now.");
+          }}
+        />
+      )}
+
         <div className="flex-1 overflow-y-auto px-8 py-6">
+          <div className="max-w-5xl mx-auto mb-5">
+            <SupportToolPanel
+              activeTool={activeSupportTool}
+              setActiveTool={setActiveSupportTool}
+              breathingActive={breathingActive}
+              onBreathingToggle={handleBreathingToggle}
+              onPrompt={handleSupportToolPrompt}
+            />
+          </div>
           {messages.length === 0 ? (
             <EmptyState
               onSuggestionClick={handleSuggestionClick}
@@ -341,12 +398,18 @@ export default function Chatbot() {
                   }}
                   rows={1}
                 />
-                <p
-                  className="mt-2 text-xs"
-                  style={{ color: "var(--aura-text-secondary)" }}
-                >
-                  Text chat is available right now. Attachments and reactions will be added in a later update.
-                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--aura-text-secondary)" }}>
+                  <span>Private reflection space</span>
+                  <span aria-hidden="true">.</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSupportToolPrompt("Can you guide me through a quick grounding exercise?")}
+                    className="hover:underline"
+                    style={{ color: "#2C5F8A" }}
+                  >
+                    Ask for grounding
+                  </button>
+                </div>
               </div>
 
               <button
@@ -367,6 +430,207 @@ export default function Chatbot() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+function SupportToolPanel({
+  activeTool,
+  setActiveTool,
+  breathingActive,
+  onBreathingToggle,
+  onPrompt,
+}) {
+  const tools = [
+    {
+      id: "grounding",
+      label: "Ground",
+      icon: ShieldCheck,
+      color: "#2C5F8A",
+      title: "5-4-3-2-1 reset",
+      body: "Name 5 things you see, 4 you feel, 3 you hear, 2 you smell, and 1 steady breath.",
+      prompt: "Guide me through the 5-4-3-2-1 grounding exercise.",
+    },
+    {
+      id: "breathing",
+      label: "Breathe",
+      icon: Wind,
+      color: "#7EC8A4",
+      title: breathingActive ? "Follow the slow rhythm" : "Box breathing",
+      body: breathingActive
+        ? "Inhale for 4, hold for 4, exhale for 4, hold for 4. Repeat gently."
+        : "Use a simple four-count pattern when your body feels activated.",
+      prompt: "Walk me through a short box breathing exercise.",
+    },
+    {
+      id: "plan",
+      label: "Plan",
+      icon: TimerReset,
+      color: "#F5A962",
+      title: "One small next step",
+      body: "Choose one safe, doable action for the next 10 minutes.",
+      prompt: "Help me choose one small next step for the next 10 minutes.",
+    },
+  ];
+  const selected = tools.find((tool) => tool.id === activeTool) || tools[0];
+  const SelectedIcon = selected.icon;
+
+  return (
+    <section
+      className="bg-white px-4 py-3"
+      style={{
+        border: "1px solid #E4ECF4",
+        borderRadius: "16px",
+        boxShadow: "0 4px 18px rgba(44, 95, 138, 0.06)",
+      }}
+      aria-label="Quick support tools"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: `${selected.color}18`, color: selected.color }}
+          >
+            <SelectedIcon size={20} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold" style={{ color: "var(--aura-text-primary)" }}>
+                {selected.title}
+              </h3>
+              {breathingActive && selected.id === "breathing" && (
+                <span
+                  className="inline-flex h-2.5 w-2.5 rounded-full"
+                  style={{ background: "#7EC8A4", boxShadow: "0 0 0 6px rgba(126, 200, 164, 0.16)" }}
+                />
+              )}
+            </div>
+            <p className="text-sm mt-1" style={{ color: "var(--aura-text-secondary)" }}>
+              {selected.body}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {tools.map((tool) => {
+            const Icon = tool.icon;
+            const active = activeTool === tool.id;
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => setActiveTool(tool.id)}
+                className="w-10 h-10 inline-flex items-center justify-center transition-all"
+                style={{
+                  borderRadius: "10px",
+                  border: active ? `1px solid ${tool.color}` : "1px solid #E4ECF4",
+                  background: active ? `${tool.color}12` : "#FFFFFF",
+                  color: active ? tool.color : "#66768F",
+                }}
+                title={tool.label}
+                aria-label={tool.label}
+              >
+                <Icon size={18} />
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={
+              selected.id === "breathing"
+                ? onBreathingToggle
+                : () => onPrompt(selected.prompt)
+            }
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white transition-all hover:opacity-90"
+            style={{ background: selected.color, borderRadius: "10px" }}
+          >
+            {selected.id === "breathing" ? <HeartPulse size={16} /> : <MessageCircle size={16} />}
+            <span>{selected.id === "breathing" ? (breathingActive ? "Pause" : "Start") : "Use"}</span>
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CrisisSupportPanel({ resources, onDismiss, onGrounding }) {
+  const primaryResource = resources?.[0];
+  const textResource = resources?.find((resource) => resource.number === "741741");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-xl bg-white overflow-hidden"
+        style={{ borderRadius: "18px", boxShadow: "0 24px 70px rgba(0, 0, 0, 0.28)" }}
+      >
+        <div className="p-6" style={{ background: "#FFF5F3", borderBottom: "1px solid #F1D1CC" }}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "rgba(224, 124, 107, 0.14)", color: "#C15A4B" }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <h2 className="text-2xl" style={{ color: "#7A3A2E" }}>Immediate Support</h2>
+                <p className="mt-1 text-sm" style={{ color: "#7A3A2E" }}>
+                  If you might hurt yourself or someone else, contact emergency support now.
+                </p>
+              </div>
+            </div>
+            <button onClick={onDismiss} className="p-2 rounded-full hover:bg-white/70" aria-label="Close support panel">
+              <X size={18} style={{ color: "#7A3A2E" }} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <a
+            href={`tel:${primaryResource?.number || "988"}`}
+            className="flex items-center gap-3 p-4 text-white"
+            style={{ background: "#E07C6B", borderRadius: "14px" }}
+          >
+            <Phone size={20} />
+            <div>
+              <div className="font-medium">Call or Text {primaryResource?.number || "988"}</div>
+              <div className="text-sm opacity-90">{primaryResource?.hotline || "988 Suicide & Crisis Lifeline"}</div>
+            </div>
+          </a>
+
+          <a
+            href={`sms:${textResource?.number || "741741"}`}
+            className="flex items-center gap-3 p-4"
+            style={{ border: "1px solid #D0DCE8", borderRadius: "14px", color: "#2C5F8A" }}
+          >
+            <MessageCircle size={20} />
+            <div>
+              <div className="font-medium">Text Support</div>
+              <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                {textResource?.text || "Text HOME to 741741"}
+              </div>
+            </div>
+          </a>
+
+          <button
+            type="button"
+            onClick={onGrounding}
+            className="w-full flex items-center gap-3 p-4 text-left"
+            style={{ border: "1px solid #D0DCE8", borderRadius: "14px", color: "#2C5F8A" }}
+          >
+            <Wind size={20} />
+            <div>
+              <div className="font-medium">Start Grounding</div>
+              <div className="text-sm" style={{ color: "var(--aura-text-secondary)" }}>
+                Get a short stabilizing prompt in chat.
+              </div>
+            </div>
+          </button>
+
+          <p className="text-xs leading-relaxed" style={{ color: "var(--aura-text-secondary)" }}>
+            AuraChat can stay with you for reflection, but urgent safety needs deserve immediate human support.
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -430,6 +694,11 @@ function MessageBubble({
   onShareMessage,
 }) {
   const isUser = message.sender === "user";
+  const omitMarkdownNode = (props) => {
+    const cleanProps = { ...props };
+    delete cleanProps.node;
+    return cleanProps;
+  };
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} gap-3`}>
@@ -465,14 +734,14 @@ function MessageBubble({
             <div className="leading-relaxed flex flex-col gap-2">
               <ReactMarkdown
                 components={{
-                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                  ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-2" {...props} />,
-                  ol: ({node, ...props}) => <ol className="list-decimal ml-5 mb-2" {...props} />,
-                  li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                  h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2" {...props} />,
-                  h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2" {...props} />,
-                  h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
-                  strong: ({node, ...props}) => <strong className="font-bold" {...props} />
+                  p: (props) => <p className="mb-2 last:mb-0" {...omitMarkdownNode(props)} />,
+                  ul: (props) => <ul className="list-disc ml-5 mb-2" {...omitMarkdownNode(props)} />,
+                  ol: (props) => <ol className="list-decimal ml-5 mb-2" {...omitMarkdownNode(props)} />,
+                  li: (props) => <li className="mb-1" {...omitMarkdownNode(props)} />,
+                  h1: (props) => <h1 className="text-xl font-bold mb-2" {...omitMarkdownNode(props)} />,
+                  h2: (props) => <h2 className="text-lg font-bold mb-2" {...omitMarkdownNode(props)} />,
+                  h3: (props) => <h3 className="text-md font-bold mb-2" {...omitMarkdownNode(props)} />,
+                  strong: (props) => <strong className="font-bold" {...omitMarkdownNode(props)} />
                 }}
               >
                 {message.text}

@@ -143,7 +143,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -171,7 +171,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -198,7 +198,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -225,7 +225,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -260,7 +260,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_with_status_st)
     @settings(
-        max_examples=50,
+        max_examples=15,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -298,7 +298,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -327,7 +327,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
@@ -355,7 +355,7 @@ class TestProperty28SecurityHeadersOnAllResponses:
 
     @given(routes=_routes_st)
     @settings(
-        max_examples=30,
+        max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )

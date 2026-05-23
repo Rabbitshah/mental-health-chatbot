@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean, ARRAY
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean, ARRAY, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
@@ -16,6 +16,7 @@ class User(Base):
     dark_mode = Column(Boolean, nullable=False, default=False)
     email_notifications = Column(Boolean, nullable=False, default=True)
     push_notifications = Column(Boolean, nullable=False, default=True)
+    notification_frequency = Column(String, nullable=False, default="daily")
     language = Column(String, nullable=False, default="English")
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -24,6 +25,8 @@ class User(Base):
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     crisis_events = relationship("CrisisEvent", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    safety_plan = relationship("SafetyPlan", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    journals = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
 
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
@@ -50,6 +53,10 @@ class ChatMessage(Base):
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+    __table_args__ = (
+        Index("idx_messages_session_created", "session_id", "created_at"),
+    )
+
     session = relationship("ChatSession", back_populates="messages")
 
 class MoodEntry(Base):
@@ -61,6 +68,10 @@ class MoodEntry(Base):
     energy_level = Column(Float, nullable=False)
     stress_level = Column(Float, nullable=False)
     date = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_mood_user_date", "user_id", "date"),
+    )
 
     user = relationship("User", back_populates="moods")
 
@@ -83,6 +94,8 @@ class CrisisEvent(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True)
     keywords = Column(ARRAY(String), nullable=True)
+    confidence = Column(Float, nullable=False, default=0.0)
+    detection_method = Column(String, nullable=False, default="keyword")
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     user = relationship("User", back_populates="crisis_events")
@@ -98,4 +111,47 @@ class Notification(Base):
     read = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+    __table_args__ = (
+        Index("idx_notifications_user_read", "user_id", "read"),
+    )
+
     user = relationship("User", back_populates="notifications")
+
+class SafetyPlan(Base):
+    __tablename__ = "safety_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    warning_signs = Column(Text, nullable=False, default="[]")
+    coping_strategies = Column(Text, nullable=False, default="[]")
+    trusted_contacts = Column(Text, nullable=False, default="[]")
+    professional_contacts = Column(Text, nullable=False, default="[]")
+    safe_environment_steps = Column(Text, nullable=False, default="[]")
+    reasons_to_stay = Column(Text, nullable=False, default="[]")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="safety_plan")
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String, nullable=False, default="Reflection")
+    mood_label = Column(String, nullable=True)
+    mood_score = Column(Float, nullable=True)
+    trigger = Column(Text, nullable=True)
+    thought = Column(Text, nullable=True)
+    body_feeling = Column(Text, nullable=True)
+    reframe = Column(Text, nullable=True)
+    next_step = Column(Text, nullable=True)
+    tags = Column(Text, nullable=False, default="[]")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("idx_journal_user_created", "user_id", "created_at"),
+    )
+
+    user = relationship("User", back_populates="journals")

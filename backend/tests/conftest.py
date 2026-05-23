@@ -1,6 +1,10 @@
 """
 Pytest configuration and fixtures for testing.
 """
+import os
+# Disable Redis for all tests — avoids connection hangs when Redis is not running
+os.environ.setdefault("REDIS_ENABLED", "false")
+
 import pytest
 from sqlalchemy import create_engine, MetaData, event
 from sqlalchemy.orm import sessionmaker, Session
@@ -66,6 +70,8 @@ def test_engine():
         Base.metadata.tables['chat_messages'],
         Base.metadata.tables['mood_entries'],
         Base.metadata.tables['refresh_tokens'],
+        Base.metadata.tables['safety_plans'],
+        Base.metadata.tables['journal_entries'],
     ]
     
     for table in tables_to_create:
