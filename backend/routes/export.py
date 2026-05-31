@@ -126,7 +126,7 @@ def export_as_json(user: User, db: Session, start_date: datetime | None = None, 
     }
 
     return {
-        "export_timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        "export_timestamp": datetime.now(timezone.utc).isoformat(),
         "user": {
             "email": user.email,
             "name": user.name,
@@ -199,7 +199,7 @@ def export_as_csv(user: User, db: Session, start_date: datetime | None = None, e
         moods_query = moods_query.filter(MoodEntry.date <= end_date)
     moods = moods_query.order_by(MoodEntry.date.asc()).all()
 
-    export_ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    export_ts = datetime.now(timezone.utc).isoformat()
 
     # --- Sessions CSV ---
     sessions_buf = io.StringIO()
@@ -389,23 +389,32 @@ def export_data(
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date must be before end_date")
 
+    # Cap export range to 5 years to prevent accidental full-table scans
+    _EXPORT_MAX_DAYS = 1825
+    from datetime import timedelta as _td
+    if start_date and end_date and (end_date - start_date).days > _EXPORT_MAX_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Date range too large. Maximum export window is {_EXPORT_MAX_DAYS} days (5 years).",
+        )
+
     if fmt == "json":
         data = export_as_json(current_user, db, start_date=start_date, end_date=end_date)
         return JSONResponse(content=data)
 
     if fmt == "pdf":
         pdf_bytes = export_as_pdf(current_user, db, start_date=start_date, end_date=end_date)
-        filename = f"export_{current_user.id}_{datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d%H%M%S')}.pdf"
+        filename = f"export_{current_user.id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.pdf"
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     zip_bytes = export_as_csv(current_user, db, start_date=start_date, end_date=end_date)
-    filename = f"export_{current_user.id}_{datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d%H%M%S')}.zip"
+    filename = f"export_{current_user.id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.zip"
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

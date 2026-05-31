@@ -90,7 +90,7 @@ def _extract_user_from_token(token: str, db: Session) -> _User:
     """
     Mirrors the logic in dependencies.get_current_user:
     1. Decode the JWT
-    2. Extract email claim
+    2. Extract 'sub' (user id) claim
     3. Look up user in DB
     Raises ValueError on any failure (maps to 401 in production).
     """
@@ -99,11 +99,16 @@ def _extract_user_from_token(token: str, db: Session) -> _User:
     except JWTError:
         raise ValueError("Could not validate credentials")
 
-    email = payload.get("email")
-    if email is None:
+    sub = payload.get("sub")
+    if sub is None:
         raise ValueError("Could not validate credentials")
 
-    user = db.query(_User).filter(_User.email == email).first()
+    try:
+        user_id = int(sub)
+    except (ValueError, TypeError):
+        raise ValueError("Could not validate credentials")
+
+    user = db.query(_User).filter(_User.id == user_id).first()
     if user is None:
         raise ValueError("Could not validate credentials")
 
@@ -140,47 +145,47 @@ class TestProperty1AuthenticationTokenValidation:
     - 1.5: Invalid/malformed JWT_Token → 401 without processing
     """
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=1, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_valid_token_with_email_claim_is_accepted(
-        self, pbt_db: Session, email: str
+    def test_valid_token_with_sub_claim_is_accepted(
+        self, pbt_db: Session, user_id: int
     ):
         """
-        Property: Any token created with a valid email and not yet expired
-        must decode successfully and yield the email claim.
+        Property: Any token created with a valid user_id and not yet expired
+        must decode successfully and yield the sub claim.
 
-        Given: An arbitrary email address
-        When: An access token is created for that email
-        Then: decode_token returns a payload containing the same email
+        Given: An arbitrary integer user_id
+        When: An access token is created for that user_id
+        Then: decode_token returns a payload containing sub == str(user_id)
         """
-        token = create_access_token({"email": email})
+        token = create_access_token(user_id)
         payload = decode_token(token)
 
-        assert payload.get("email") == email, (
-            f"Decoded email '{payload.get('email')}' must equal original '{email}'"
+        assert payload.get("sub") == str(user_id), (
+            f"Decoded sub '{payload.get('sub')}' must equal str(user_id) '{user_id}'"
         )
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=1, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_valid_token_contains_future_expiry(self, email: str):
+    def test_valid_token_contains_future_expiry(self, user_id: int):
         """
         Property: Every freshly created access token has an expiry strictly
         in the future.
 
-        Given: An arbitrary email
+        Given: An arbitrary user_id
         When: An access token is created
         Then: The 'exp' claim is greater than the current UTC timestamp
         """
         before = datetime.now(timezone.utc)
-        token = create_access_token({"email": email})
+        token = create_access_token(user_id)
         payload = decode_token(token)
 
         exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
@@ -188,23 +193,23 @@ class TestProperty1AuthenticationTokenValidation:
             f"Token expiry {exp} must be in the future (created at {before})"
         )
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=1, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_access_token_expiry_matches_15_minute_policy(self, email: str):
+    def test_access_token_expiry_matches_15_minute_policy(self, user_id: int):
         """
         Property: Access token expiry is approximately ACCESS_TOKEN_EXPIRE_MINUTES
         (15 minutes) from creation time.
 
-        Given: An arbitrary email
+        Given: An arbitrary user_id
         When: An access token is created
         Then: exp ≈ now + 15 minutes (within 5 seconds tolerance)
         """
         before = datetime.now(timezone.utc)
-        token = create_access_token({"email": email})
+        token = create_access_token(user_id)
         after = datetime.now(timezone.utc)
 
         payload = decode_token(token)
@@ -218,25 +223,25 @@ class TestProperty1AuthenticationTokenValidation:
             f"Token expiry {exp} must be ~{ACCESS_TOKEN_EXPIRE_MINUTES} minutes from creation"
         )
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=1, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_expired_token_raises_jwt_error(self, email: str):
+    def test_expired_token_raises_jwt_error(self, user_id: int):
         """
         Property: Any token whose expiry is in the past MUST be rejected by
         decode_token with a JWTError (maps to 401 in production).
 
         Validates Requirement 1.3: expired JWT_Token → 401
 
-        Given: An arbitrary email
+        Given: An arbitrary user_id
         When: A token is created with a past expiry
         Then: decode_token raises JWTError
         """
         expired_token = create_access_token(
-            {"email": email},
+            user_id,
             expires_delta=timedelta(seconds=-1),
         )
 
@@ -297,44 +302,43 @@ class TestProperty1AuthenticationTokenValidation:
     )
     def test_token_without_email_claim_is_rejected(self, email: str):
         """
-        Property: A structurally valid JWT that lacks the 'email' claim MUST
-        be treated as invalid by the auth dependency (email is None → 401).
+        Property: A structurally valid JWT that lacks the 'sub' claim MUST
+        be treated as invalid by the auth dependency (sub is None → 401).
 
         Validates Requirement 1.5: invalid JWT_Token → 401
 
-        Given: A valid JWT with no email field
-        When: The auth dependency extracts the email claim
-        Then: The email claim is None, triggering a 401
+        Given: A valid JWT with no sub field
+        When: The auth dependency extracts the sub claim
+        Then: The sub claim is None, triggering a 401
         """
-        # Build a token with no email claim (only exp)
+        # Build a token with no sub claim (only exp)
         payload = {"exp": datetime.now(timezone.utc) + timedelta(minutes=15)}
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         decoded = decode_token(token)
-        assert decoded.get("email") is None, (
-            "Token without email claim must yield None for the email field"
+        assert decoded.get("sub") is None, (
+            "Token without sub claim must yield None for the sub field"
         )
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=1, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
-    def test_tokens_for_different_emails_are_distinct(self, email: str):
+    def test_tokens_for_different_users_are_distinct(self, user_id: int):
         """
-        Property: Two tokens created for different emails must not be equal.
+        Property: Two tokens created for different user IDs must not be equal.
 
-        Given: An email and a different email (email + suffix)
+        Given: A user_id and a different user_id (user_id + 1)
         When: Tokens are created for both
         Then: The token strings are different
         """
-        other_email = f"other_{email}"
-        token1 = create_access_token({"email": email})
-        token2 = create_access_token({"email": other_email})
+        token1 = create_access_token(user_id)
+        token2 = create_access_token(user_id + 1)
 
         assert token1 != token2, (
-            "Tokens for different emails must be distinct"
+            "Tokens for different user IDs must be distinct"
         )
 
 
@@ -387,7 +391,7 @@ class TestProperty2AuthenticatedRequestProcessing:
             users.append(u)
         pbt_db.commit()
 
-        user_tokens = {u.id: create_access_token({"email": u.email}) for u in users}
+        user_tokens = {u.id: create_access_token(u.id) for u in users}
 
         for user in users:
             resolved = _extract_user_from_token(user_tokens[user.id], pbt_db)
@@ -396,26 +400,26 @@ class TestProperty2AuthenticatedRequestProcessing:
             )
             assert resolved.email == user.email
 
-    @given(email=_email_st)
+    @given(user_id=st.integers(min_value=900000, max_value=10**9))
     @settings(
         max_examples=10,
         deadline=None,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
     )
     def test_token_for_unknown_user_raises_value_error(
-        self, pbt_db: Session, email: str
+        self, pbt_db: Session, user_id: int
     ):
         """
-        Property: A structurally valid, non-expired token whose email does not
+        Property: A structurally valid, non-expired token whose user_id does not
         correspond to any user in the database MUST be rejected (→ 401).
 
         Validates Requirement 1.1: unauthorized users cannot consume API resources
 
-        Given: A valid token for an email not in the database
+        Given: A valid token for a user_id not in the database
         When: The auth dependency attempts to resolve the user
         Then: ValueError is raised (maps to 401)
         """
-        token = create_access_token({"email": email})
+        token = create_access_token(user_id)
 
         with pytest.raises(ValueError, match="Could not validate credentials"):
             _extract_user_from_token(token, pbt_db)
@@ -447,7 +451,7 @@ class TestProperty2AuthenticatedRequestProcessing:
         pbt_db.commit()
 
         expired_token = create_access_token(
-            {"email": user.email},
+            user.id,
             expires_delta=timedelta(seconds=-1),
         )
 
@@ -476,21 +480,15 @@ class TestProperty2AuthenticatedRequestProcessing:
         with pytest.raises(ValueError, match="Could not validate credentials"):
             _extract_user_from_token(garbage, pbt_db)
 
-    @given(email=_email_st)
-    @settings(
-        max_examples=10,
-        deadline=None,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
-    )
-    def test_token_without_email_claim_rejected(self, pbt_db: Session, email: str):
+    def test_token_without_sub_claim_rejected(self, pbt_db: Session):
         """
-        Property: A valid JWT missing the email claim MUST be rejected (→ 401).
+        Property: A valid JWT missing the 'sub' claim MUST be rejected (→ 401).
 
         Validates Requirement 1.5: invalid JWT_Token → 401
 
-        Given: A JWT with no email claim
+        Given: A JWT with no sub claim
         When: The auth dependency processes it
-        Then: ValueError is raised because email is None
+        Then: ValueError is raised because sub is None
         """
         payload = {"exp": datetime.now(timezone.utc) + timedelta(minutes=15)}
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
@@ -526,7 +524,7 @@ class TestProperty2AuthenticatedRequestProcessing:
         pbt_db.add(user)
         pbt_db.commit()
 
-        token = create_access_token({"email": user.email})
+        token = create_access_token(user.id)
         resolved = _extract_user_from_token(token, pbt_db)
 
         assert resolved.id == user.id
@@ -563,7 +561,7 @@ class TestProperty2AuthenticatedRequestProcessing:
             users.append(u)
         pbt_db.commit()
 
-        tokens = {u.id: create_access_token({"email": u.email}) for u in users}
+        tokens = {u.id: create_access_token(u.id) for u in users}
 
         for user in users:
             resolved = _extract_user_from_token(tokens[user.id], pbt_db)

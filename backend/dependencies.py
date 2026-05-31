@@ -16,20 +16,21 @@ def get_current_user(
         detail="Not authenticated",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     if not access_token:
         raise credentials_exception
-        
+
     try:
         payload = decode_token(access_token)
-        email: str = payload.get("email")
-        if email is None:
+        user_id_str: str | None = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
+        user_id = int(user_id_str)
     except Exception:
         raise credentials_exception
-        
-    user = db.query(User).filter(User.email == email).first()
+
+    user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
-        
+
     return user

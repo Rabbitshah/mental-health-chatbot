@@ -12,14 +12,18 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+assert SECRET_KEY, (
+    "SECRET_KEY environment variable must be set. "
+    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Updated from 60 to 15 minutes
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
+def create_access_token(user_id: int, expires_delta: timedelta | None = None) -> str:
+    """Create a short-lived JWT access token containing the user's ID as 'sub'."""
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
+    to_encode = {"sub": str(user_id), "exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def decode_token(token: str) -> dict:
@@ -44,8 +48,8 @@ def create_refresh_token(user_id: int, db: Session) -> str:
     # Generate a secure random token
     token = secrets.token_urlsafe(32)
     
-    # Calculate expiry
-    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    # Calculate expiry (stored as UTC, timezone-aware to match _utcnow() in models)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     
     # Store in database
     refresh_token = RefreshToken(
@@ -86,7 +90,12 @@ def validate_refresh_token(token: str, db: Session):
     if refresh_token.revoked:
         raise ValueError("Refresh token has been revoked")
     
-    if refresh_token.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+    expires_at = refresh_token.expires_at
+    # Make expires_at timezone-aware if it was stored naïvely (legacy rows)
+    if expires_at.tzinfo is None:
+        from datetime import timezone as _tz
+        expires_at = expires_at.replace(tzinfo=_tz.utc)
+    if expires_at < datetime.now(timezone.utc):
         raise ValueError("Refresh token has expired")
     
     # Get the associated user

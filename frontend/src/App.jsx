@@ -6,6 +6,7 @@ import SplashScreen from "./pages/SplashScreen";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import LoadingSpinner from "./components/LoadingSpinner";
+import { AuthProvider } from "./contexts/AuthContext";
 
 // Lazy-loaded route components (requirement 17.1, 17.2, 17.3)
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -30,6 +31,7 @@ function App() {
   }, []);
 
   return (
+    <AuthProvider>
     <Router>
       <Routes>
         <Route path="/" element={<SplashScreen />} />
@@ -132,6 +134,7 @@ function App() {
         <Route path="*" element={<SplashScreen />} />
       </Routes>
     </Router>
+    </AuthProvider>
   );
 }
 

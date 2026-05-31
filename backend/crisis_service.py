@@ -203,7 +203,7 @@ def log_crisis_event(
             keywords=keywords,
             confidence=confidence,
             detection_method=method,
-            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            created_at=datetime.now(timezone.utc),
         )
         db.add(event)
         db.commit()

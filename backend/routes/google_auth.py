@@ -1,90 +1,109 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import JSONResponse
-from google.oauth2 import id_token
-from google.auth.transport import requests
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import OperationalError
-from dotenv import load_dotenv
+import logging
 import os
 
-# Load environment variables
-load_dotenv()  # This will load from .env in the current directory
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from google.auth.transport import requests
+from google.oauth2 import id_token
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
-from models import User
 from database import get_db
-from jwt_handler import create_access_token
+from jwt_handler import create_access_token, create_refresh_token
+from models import User
 
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Get Google Client ID from environment variables
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-if not GOOGLE_CLIENT_ID:
-    raise ValueError("GOOGLE_CLIENT_ID environment variable not set")
+# Validated at startup in main.py via _REQUIRED_ENV_VARS; assert here for safety
+# when this module is imported outside the main app (e.g., tests).
+assert GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID must be set"
 
-# Rest of your google_auth.py code remains the same...
+
+def _unique_username(db: Session, requested_username: str) -> str:
+    """Return a unique username, appending a random hex suffix when needed."""
+    import secrets
+
+    candidate = requested_username
+    if not db.query(User).filter(User.username == candidate).first():
+        return candidate
+
+    base = requested_username[:42].rstrip("_-") or "user"
+    for _ in range(20):
+        suffix = secrets.token_hex(3)
+        candidate = f"{base}_{suffix}"
+        if not db.query(User).filter(User.username == candidate).first():
+            return candidate
+    raise HTTPException(status_code=409, detail="Could not generate a unique username")
 
 
 @router.post("/google-login")
 async def google_login(request: Request, db: Session = Depends(get_db)):
     try:
         body = await request.json()
-        token = body.get("credential")
+        credential = body.get("credential")
 
-        if not token:
+        if not credential:
             raise HTTPException(status_code=400, detail="Token not provided")
 
         try:
-            # Verify Google ID token
             idinfo = id_token.verify_oauth2_token(
-                token,
+                credential,
                 requests.Request(),
                 GOOGLE_CLIENT_ID,
             )
+        except ValueError as ve:
+            logger.warning("Google token verification failed: %s", ve)
+            raise HTTPException(status_code=400, detail="Invalid Google token")
 
-            google_user_id = idinfo["sub"]
-            email = idinfo.get("email")
-            name = idinfo.get("name")
-            picture = idinfo.get("picture")
+        google_user_id: str = idinfo["sub"]
+        email: str | None = idinfo.get("email")
+        name: str | None = idinfo.get("name")
+        picture: str | None = idinfo.get("picture")
 
-            if not email:
-                raise HTTPException(status_code=400, detail="Email not provided by Google")
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided by Google")
 
-            # Find or create user
-            user = db.query(User).filter(User.google_id == google_user_id).first()
-            
-            if not user:
-                # Try to find by email
-                user = db.query(User).filter(User.email == email).first()
-                if user:
-                    # Update existing user with google_id
-                    user.google_id = google_user_id
-                    if not user.picture and picture:
-                        user.picture = picture
-                    db.commit()
-                    db.refresh(user)
-                else:
-                    # Create new user
-                    username = email.split('@')[0]
-                    # Ensure username is unique
-                    existing_user = db.query(User).filter(User.username == username).first()
-                    if existing_user:
-                        username = f"{username}_{google_user_id[-6:]}"
-                    
-                    user = User(
-                        email=email,
-                        name=name or email.split('@')[0],
-                        username=username,
-                        google_id=google_user_id,
-                        picture=picture,
-                        password=None  # No password for Google users
-                    )
-                    db.add(user)
-                    db.commit()
-                    db.refresh(user)
+        # Find or create user
+        user = db.query(User).filter(User.google_id == google_user_id).first()
+        if not user:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # Link existing account to Google
+                user.google_id = google_user_id
+                if not user.picture and picture:
+                    user.picture = picture
+                db.commit()
+                db.refresh(user)
+            else:
+                # New user — derive a username from email prefix and ensure uniqueness
+                username_base = email.split("@")[0][:42] or "user"
+                username = _unique_username(db, username_base)
 
-            jwt_token = create_access_token({"email": user.email})
+                user = User(
+                    email=email,
+                    name=name or username_base,
+                    username=username,
+                    google_id=google_user_id,
+                    picture=picture,
+                    password=None,  # Google-only account — no local password
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
-            return {
+        # Issue tokens
+        access_token = create_access_token(user.id)
+        refresh_token = create_refresh_token(user.id, db)
+
+        # Build a JSONResponse so we can attach cookies
+        response = JSONResponse(
+            content={
+                "msg": "Google login successful",
                 "user": {
                     "id": user.id,
                     "name": user.name,
@@ -95,19 +114,34 @@ async def google_login(request: Request, db: Session = Depends(get_db)):
                     "has_password": bool(user.password),
                     "auth_provider": "google" if user.google_id and not user.password else "local",
                 },
-                "token": jwt_token
+                # Tokens are intentionally NOT returned in the body.
+                # They are delivered exclusively via HttpOnly cookies.
             }
+        )
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=15 * 60,
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            max_age=7 * 24 * 60 * 60,
+        )
+        return response
 
-        except ValueError as ve:
-            print(f"ValueError in Google token verification: {str(ve)}")
-            raise HTTPException(status_code=400, detail=f"Invalid token: {str(ve)}")
-
+    except HTTPException:
+        raise
     except OperationalError as oe:
         db.rollback()
-        print(f"Database error in Google login: {str(oe)}")
+        logger.error("Database error in Google login: %s", oe, exc_info=True)
         raise HTTPException(status_code=503, detail="Database connection lost. Please try again.")
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Unexpected error in Google login: {str(e)}\n{error_details}")
+        logger.error("Unexpected error in Google login: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

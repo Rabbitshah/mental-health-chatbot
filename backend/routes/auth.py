@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 from database import (
     SessionLocal,
     engine,
+    get_db,
     ensure_chat_session_status_columns,
     ensure_user_preference_columns,
     ensure_wellness_feature_tables,
+    ensure_refresh_token_index,
 )
 from models import User
 from database import Base
@@ -41,6 +43,7 @@ else:
 ensure_chat_session_status_columns()
 ensure_user_preference_columns()
 ensure_wellness_feature_tables()
+ensure_refresh_token_index()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -141,21 +144,17 @@ class UserDelete(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str | None = None
 
-# Dependency
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 
 def build_user_payload(user: User) -> dict:
     """Build a safe user payload dict (no password hash)."""
     return {
+        "id": user.id,
         "name": user.name,
         "username": user.username,
         "email": user.email,
+        "picture": user.picture,
+        "has_password": bool(user.password),
+        "auth_provider": "google" if getattr(user, "google_id", None) and not user.password else "local",
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "dark_mode": bool(user.dark_mode),
         "email_notifications": bool(user.email_notifications),
@@ -200,11 +199,11 @@ def signup(request: Request, user: UserCreate, response: Response, db: Session =
     db.commit()
     db.refresh(new_user)
 
-    token = create_access_token({"email": new_user.email})
+    token = create_access_token(new_user.id)
     from jwt_handler import create_refresh_token
     refresh_token = create_refresh_token(new_user.id, db)
 
-    # Set HttpOnly cookies
+    # Set HttpOnly cookies — tokens are NOT returned in the response body
     response.set_cookie(
         key="access_token",
         value=token,
@@ -225,8 +224,6 @@ def signup(request: Request, user: UserCreate, response: Response, db: Session =
     return {
         "msg": "Signup successful",
         "user": build_user_payload(new_user),
-        "token": token,
-        "refresh_token": refresh_token
     }
 
 
@@ -239,13 +236,13 @@ def login(request: Request, user: UserLogin, response: Response, db: Session = D
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Create access token (15 minutes)
-    access_token = create_access_token({"email": existing.email})
-    
+    access_token = create_access_token(existing.id)
+
     # Create refresh token (7 days) and store in database
     from jwt_handler import create_refresh_token
     refresh_token = create_refresh_token(existing.id, db)
 
-    # Set HttpOnly cookies
+    # Set HttpOnly cookies — tokens are NOT returned in the response body
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -266,13 +263,13 @@ def login(request: Request, user: UserLogin, response: Response, db: Session = D
     return {
         "msg": "Login successful",
         "user": build_user_payload(existing),
-        "token": access_token,
-        "refresh_token": refresh_token
     }
 
 
 @router.post("/auth/refresh")
+@limiter.limit("10/minute")
 def refresh_token(
+    request: Request,
     response: Response,
     body: TokenRefresh | None = None,
     refresh_token: str = Cookie(None),
@@ -299,11 +296,11 @@ def refresh_token(
             pass # Already revoked or not found, but validate_refresh_token passed so it's fine
             
         new_refresh_token = create_refresh_token(user.id, db)
-        
+
         # Issue a new access token
-        new_access_token = create_access_token({"email": user.email})
-        
-        # Set new access token cookie
+        new_access_token = create_access_token(user.id)
+
+        # Set new cookies — tokens are NOT returned in the response body
         response.set_cookie(
             key="access_token",
             value=new_access_token,
@@ -312,8 +309,6 @@ def refresh_token(
             samesite="strict",
             max_age=15 * 60
         )
-        
-        # Set new refresh token cookie
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
@@ -322,12 +317,8 @@ def refresh_token(
             samesite="strict",
             max_age=7 * 24 * 60 * 60
         )
-        
-        return {
-            "msg": "Token refreshed successfully",
-            "token": new_access_token,
-            "refresh_token": new_refresh_token
-        }
+
+        return {"msg": "Token refreshed successfully"}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -358,7 +349,9 @@ def get_profile(
 
 
 @router.put("/profile")
+@limiter.limit("10/minute")
 def update_profile(
+    request: Request,
     update: UserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -411,7 +404,9 @@ def update_profile(
     }
 
 @router.delete("/profile")
+@limiter.limit("5/minute")
 def delete_profile(
+    request: Request,
     delete_req: UserDelete,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -458,6 +453,7 @@ def get_me(current_user: User = Depends(get_current_user)):
     return build_user_payload(current_user)
 
 @router.post("/logout")
+@limiter.limit("20/minute")
 def logout(request: Request, response: Response, logout_data: LogoutRequest = None, db: Session = Depends(get_db)):
     # 1. Try to revoke the refresh token if provided
     refresh_token = request.cookies.get("refresh_token")

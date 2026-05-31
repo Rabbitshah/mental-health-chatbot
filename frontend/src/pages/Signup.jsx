@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Mail, Lock, User, Eye, EyeOff } from "lucide-react";
 import API from "../api";
 import GoogleLoginButton from "../components/GoogleLoginButton";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Signup() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,9 +57,9 @@ export default function Signup() {
         username,
       });
 
+      // Signup sets the HttpOnly cookie; follow up with a login to get the user profile.
       const res = await API.post("/login", { email, password });
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      login(res.data.user);
       navigate("/dashboard");
     } catch (err) {
       alert(err.response?.data?.detail || "Signup failed");

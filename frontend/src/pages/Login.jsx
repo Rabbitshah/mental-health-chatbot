@@ -3,9 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 import API from "../api";
 import GoogleLoginButton from "../components/GoogleLoginButton";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -16,8 +18,8 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await API.post("/login", { email, password });
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("user", JSON.stringify(res.data.user));
+      // Tokens arrive as HttpOnly cookies — we only handle the user profile.
+      login(res.data.user);
       navigate("/dashboard");
     } catch (err) {
       alert(err.response?.data?.detail || "Login failed");

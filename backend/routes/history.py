@@ -1,7 +1,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from models import ChatSession, ChatMessage, User
 from dependencies import get_current_user
 from redis_client import cache_get, cache_set, cache_delete, CacheKeys, CacheTTL, invalidate_user_caches
 from constants import ALLOWED_TAGS
+from limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +254,7 @@ def rename_session(session_id: int, request: SessionUpdateRequest, db: Session =
         chat_session.tag = request.tag
 
     # Subtask 9.2: Update updated_at timestamp
-    chat_session.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    chat_session.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(chat_session)
@@ -311,7 +312,8 @@ def delete_session(session_id: int, db: Session = Depends(get_db), current_user:
     return {"message": "Session deleted successfully"}
 
 @router.delete("/")
-def delete_all_sessions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("5/minute")
+def delete_all_sessions(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     sessions = db.query(ChatSession).filter(ChatSession.user_id == current_user.id).all()
 
     deleted_count = len(sessions)

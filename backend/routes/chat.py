@@ -30,7 +30,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 # ✅ Force Gemini 1.5 Flash
 MODEL_NAME = "gemini-2.5-flash"
-print("Using Gemini model:", MODEL_NAME)
+logger.info("Using Gemini model: %s", MODEL_NAME)
 
 MENTAL_HEALTH_SYSTEM_PROMPT = """
 You are a warm, calming, and emotionally supportive mental-health chatbot. 
@@ -250,8 +250,12 @@ def generate_session_title(first_message: str) -> str:
         return text
     return text[:47] + "..."
 
-def is_auto_generated_title(title: str) -> bool:
-    return title == "New Conversation" or title.endswith("...")
+def is_auto_generated_title(session) -> bool:
+    """Return True when the session's title was set automatically and can be overwritten."""
+    # Prefer the explicit DB flag; fall back to heuristic for legacy rows.
+    if hasattr(session, "title_is_auto") and session.title_is_auto is not None:
+        return bool(session.title_is_auto)
+    return session.title == "New Conversation" or session.title.endswith("...")
 
 
 def generate_summary(session_id: int, db: Session) -> Optional[str]:
@@ -277,9 +281,11 @@ def generate_summary(session_id: int, db: Session) -> Optional[str]:
     fallback = (first_user_msg[:200] if first_user_msg else None)
 
     try:
-        # Build a compact transcript for the summary prompt
+        # Build a compact transcript (capped at 100 most-recent messages to
+        # avoid sending huge prompts that exhaust quota or increase latency).
+        recent_messages = messages[-100:]
         transcript_lines = []
-        for m in messages:
+        for m in recent_messages:
             role = "User" if m.sender == "user" else "Assistant"
             transcript_lines.append(f"{role}: {m.text}")
         transcript = "\n".join(transcript_lines)
@@ -451,9 +457,10 @@ def chat(
             refreshed_title
             and refreshed_title != chat_session.title
             and user_message_count <= 3
-            and is_auto_generated_title(chat_session.title)
+            and is_auto_generated_title(chat_session)
         ):
             chat_session.title = refreshed_title
+            # Keep title_is_auto True until a user manually renames the session.
 
         db.commit()
 
@@ -507,7 +514,6 @@ def chat(
             },
             exc_info=True,
         )
-        print("Gemini Error in /chat:", repr(e))
 
         if "ResourceExhausted" in repr(e) or "quota" in msg.lower():
             raise HTTPException(

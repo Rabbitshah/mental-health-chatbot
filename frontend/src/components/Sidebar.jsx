@@ -23,6 +23,7 @@ import {
 import { useState, createElement, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import API from "../api";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -33,7 +34,8 @@ export default function Sidebar() {
   const [showRecents, setShowRecents] = useState(true);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [recentChats, setRecentChats] = useState([]);
-  const [userName, setUserName] = useState("Jane Doe");
+  const { user: authUser, logout } = useAuth();
+  const userName = authUser?.name || "Jane Doe";
 
   const fetchRecentChats = async () => {
     try {
@@ -55,18 +57,6 @@ export default function Sidebar() {
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        if (user?.name) {
-          setUserName(user.name);
-        }
-      } catch {
-        // Ignore malformed local user payload and keep defaults.
-      }
-    }
-
     fetchRecentChats();
     window.addEventListener("sessions-updated", fetchRecentChats);
 
@@ -326,8 +316,7 @@ export default function Sidebar() {
           onClick={(e) => {
             e.stopPropagation();
             if (confirm("Are you sure you want to log out?")) {
-              localStorage.removeItem("token");
-              localStorage.removeItem("user");
+              logout();
               navigate("/");
             }
           }}

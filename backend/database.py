@@ -49,6 +49,13 @@ def ensure_chat_session_status_columns():
                     f"ALTER TABLE chat_sessions ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT {_boolean_default_sql(False)}"
                 )
             )
+        if "title_is_auto" not in existing_columns:
+            # Default TRUE so existing sessions are treated as auto-titled.
+            connection.execute(
+                text(
+                    f"ALTER TABLE chat_sessions ADD COLUMN title_is_auto BOOLEAN NOT NULL DEFAULT {_boolean_default_sql(True)}"
+                )
+            )
 
 def ensure_user_preference_columns():
     inspector = inspect(engine)
@@ -95,6 +102,22 @@ def ensure_crisis_event_columns():
             connection.execute(
                 text("ALTER TABLE crisis_events ADD COLUMN detection_method VARCHAR")
             )
+
+def ensure_refresh_token_index():
+    """
+    Create the composite index on refresh_tokens(revoked, expires_at) if it does
+    not already exist.  This speeds up token-cleanup queries that scan for
+    non-revoked or expired rows without going through the unique token column.
+    SQLite does not support CREATE INDEX IF NOT EXISTS with the same syntax, so
+    we detect the dialect and skip silently for test environments.
+    """
+    if engine.dialect.name == "sqlite":
+        return
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_refresh_tokens_revoked_expires_at "
+            "ON refresh_tokens (revoked, expires_at)"
+        ))
 
 def ensure_wellness_feature_tables():
     from models import JournalEntry, SafetyPlan

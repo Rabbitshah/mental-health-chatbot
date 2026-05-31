@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   MessageCircle,
@@ -20,9 +20,11 @@ import Sidebar from "./Sidebar";
 import CrisisBanner from "./CrisisBanner";
 import NotificationBell from "./NotificationBell";
 import { showToast } from "./Toast";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Chatbot() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const { sessionId } = useParams();
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
@@ -39,21 +41,15 @@ export default function Chatbot() {
     : "aurachat-draft-new";
 
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    if (!isLoggedIn) {
+    // Use server-authoritative auth state from AuthContext.
+    // ProtectedRoute already redirects unauthenticated users; this is a
+    // belt-and-suspenders guard for direct component use.
+    if (authUser === false) {
       navigate("/login");
       return;
     }
 
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        if (user?.name) setUserName(user.name);
-      } catch {
-        // Ignore malformed local user payload and keep defaults.
-      }
-    }
+    if (authUser?.name) setUserName(authUser.name);
 
     const savedDraft = localStorage.getItem(draftStorageKey);
     if (savedDraft) {
@@ -82,7 +78,7 @@ export default function Chatbot() {
     } else {
       setMessages([]);
     }
-  }, [draftStorageKey, navigate, sessionId]);
+  }, [authUser, draftStorageKey, navigate, sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

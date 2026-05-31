@@ -1,7 +1,12 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean, ARRAY, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
+
+
+def _utcnow():
+    """Return current UTC time as a timezone-aware datetime."""
+    return datetime.now(timezone.utc)
 
 class User(Base):
     __tablename__ = "users"
@@ -18,7 +23,7 @@ class User(Base):
     push_notifications = Column(Boolean, nullable=False, default=True)
     notification_frequency = Column(String, nullable=False, default="daily")
     language = Column(String, nullable=False, default="English")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     moods = relationship("MoodEntry", back_populates="user", cascade="all, delete-orphan")
@@ -34,12 +39,13 @@ class ChatSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     title = Column(String, nullable=False, default="New Conversation")
+    title_is_auto = Column(Boolean, nullable=False, default=True)
     tag = Column(String, nullable=True, default="General", index=True)
     summary = Column(Text, nullable=True)
     is_pinned = Column(Boolean, nullable=False, default=False)
     is_archived = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, index=True)
 
     user = relationship("User", back_populates="sessions")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
@@ -51,7 +57,7 @@ class ChatMessage(Base):
     session_id = Column(Integer, ForeignKey("chat_sessions.id"), index=True)
     sender = Column(String, nullable=False) # 'user' or 'ai'
     text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)
 
     __table_args__ = (
         Index("idx_messages_session_created", "session_id", "created_at"),
@@ -67,7 +73,7 @@ class MoodEntry(Base):
     mood_score = Column(Float, nullable=False) # e.g. 1 to 10
     energy_level = Column(Float, nullable=False)
     stress_level = Column(Float, nullable=False)
-    date = Column(DateTime, default=datetime.utcnow, index=True)
+    date = Column(DateTime, default=_utcnow, index=True)
 
     __table_args__ = (
         Index("idx_mood_user_date", "user_id", "date"),
@@ -82,10 +88,15 @@ class RefreshToken(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     token = Column(String, unique=True, nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     revoked = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="refresh_tokens")
+
+    # Composite index speeds up cleanup queries: WHERE revoked = false AND expires_at < now()
+    __table_args__ = (
+        Index("ix_refresh_tokens_revoked_expires_at", "revoked", "expires_at"),
+    )
 
 class CrisisEvent(Base):
     __tablename__ = "crisis_events"
@@ -96,7 +107,7 @@ class CrisisEvent(Base):
     keywords = Column(ARRAY(String), nullable=True)
     confidence = Column(Float, nullable=False, default=0.0)
     detection_method = Column(String, nullable=False, default="keyword")
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)
 
     user = relationship("User", back_populates="crisis_events")
     message = relationship("ChatMessage")
@@ -109,7 +120,7 @@ class Notification(Base):
     type = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     read = Column(Boolean, default=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)
 
     __table_args__ = (
         Index("idx_notifications_user_read", "user_id", "read"),
@@ -128,8 +139,8 @@ class SafetyPlan(Base):
     professional_contacts = Column(Text, nullable=False, default="[]")
     safe_environment_steps = Column(Text, nullable=False, default="[]")
     reasons_to_stay = Column(Text, nullable=False, default="[]")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", back_populates="safety_plan")
 
@@ -147,8 +158,8 @@ class JournalEntry(Base):
     reframe = Column(Text, nullable=True)
     next_step = Column(Text, nullable=True)
     tags = Column(Text, nullable=False, default="[]")
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utcnow, index=True)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, index=True)
 
     __table_args__ = (
         Index("idx_journal_user_created", "user_id", "created_at"),

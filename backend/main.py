@@ -32,6 +32,7 @@ _REQUIRED_ENV_VARS = {
     "SECRET_KEY": "JWT signing secret. Set a long random string.",
     "DATABASE_URL": "PostgreSQL connection URL. Example: postgresql://user:pass@localhost:5432/db",
     "GEMINI_API_KEY": "Google Gemini API key for AI responses.",
+    "GOOGLE_CLIENT_ID": "Google OAuth client ID for Google login.",
     "CORS_ORIGINS": (
         "Comma-separated list of allowed frontend origins. "
         "Example: CORS_ORIGINS=http://localhost:5173,http://localhost:3000"
@@ -68,12 +69,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        # script-src: 'self' only — Vite bundles all JS into content-addressed
+        # files; no inline scripts exist in the SPA.
+        # style-src: 'unsafe-inline' retained — Tailwind CSS emits inline style
+        # attributes that cannot be eliminated without a nonce injection build step.
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
-            "connect-src 'self' https:;"
+            "connect-src 'self' https:; "
+            "font-src 'self' data:; "
+            "frame-ancestors 'none';"
         )
         if self.environment == "production":
             response.headers["Strict-Transport-Security"] = (
@@ -92,7 +99,10 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
         try:
             import os as _os
             from jose import jwt as _jwt
-            payload = _jwt.decode(token, _os.getenv("SECRET_KEY", ""), algorithms=["HS256"])
+            _secret = _os.getenv("SECRET_KEY") or ""
+            if not _secret:
+                raise ValueError("SECRET_KEY not set")
+            payload = _jwt.decode(token, _secret, algorithms=["HS256"])
             user_id = payload.get("sub")
         except Exception:
             pass
@@ -132,8 +142,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
     expose_headers=["Cross-Origin-Opener-Policy"],
 )
 

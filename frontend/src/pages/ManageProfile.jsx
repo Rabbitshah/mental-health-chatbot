@@ -16,8 +16,10 @@ import { motion } from "motion/react";
 import Sidebar from "../components/Sidebar";
 import API from "../api";
 import NotificationBell from "../components/NotificationBell";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function ManageProfile() {
+  const { refetch, logout } = useAuth();
   const [darkMode, setDarkMode] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
@@ -100,6 +102,7 @@ export default function ManageProfile() {
       });
       alert("Profile updated successfully!");
       localStorage.setItem("user", JSON.stringify(res.data.user));
+      refetch();
       setHasPassword(res.data.user?.has_password ?? hasPassword);
       setAuthProvider(res.data.user?.auth_provider || authProvider);
       setProfilePassword("");
@@ -139,6 +142,7 @@ export default function ManageProfile() {
       });
       alert("Password changed successfully!");
       localStorage.setItem("user", JSON.stringify(res.data.user));
+      refetch();
       setHasPassword(res.data.user?.has_password ?? true);
       setAuthProvider(res.data.user?.auth_provider || authProvider);
       setDarkMode(Boolean(res.data.user?.dark_mode));
@@ -176,6 +180,7 @@ export default function ManageProfile() {
         current_password: hasPassword ? profilePassword || currentPassword : undefined,
       });
       localStorage.setItem("user", JSON.stringify(res.data.user));
+      refetch();
       setDarkMode(Boolean(res.data.user?.dark_mode));
       setEmailNotifications(res.data.user?.email_notifications ?? true);
       setPushNotifications(res.data.user?.push_notifications ?? true);
@@ -289,6 +294,7 @@ export default function ManageProfile() {
         language: "English",
       });
       localStorage.setItem("user", JSON.stringify(res.data.user));
+      refetch();
       setDarkMode(false);
       setEmailNotifications(true);
       setPushNotifications(true);
@@ -325,7 +331,7 @@ export default function ManageProfile() {
         data: { current_password: profilePassword }
       });
       alert("Your account has been deleted.");
-      localStorage.clear();
+      logout();
       window.location.href = "/";
     } catch (error) {
       setStatusMessage({

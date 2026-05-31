@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Heart, Activity, Brain } from "lucide-react";
+import { X, Heart, Activity, Brain, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import API from "../api";
 
@@ -8,9 +8,11 @@ export default function MoodCheckInModal({ isOpen, onClose, onRefresh }) {
   const [energy, setEnergy] = useState(7);
   const [stress, setStress] = useState(3);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       await API.post("/insights/mood", {
         mood_score: mood,
@@ -21,6 +23,10 @@ export default function MoodCheckInModal({ isOpen, onClose, onRefresh }) {
       onClose();
     } catch (error) {
       console.error("Failed to submit mood", error);
+      setSubmitError(
+        error.response?.data?.detail ||
+          "Could not save your check-in. Please try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -129,10 +135,17 @@ export default function MoodCheckInModal({ isOpen, onClose, onRefresh }) {
               </div>
             </div>
 
+            {submitError && (
+              <div className="mt-6 flex items-center gap-2 text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
+
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="w-full mt-10 py-4 text-white font-medium transition-all disabled:opacity-50"
+              className="w-full mt-6 py-4 text-white font-medium transition-all disabled:opacity-50"
               style={{ 
                 background: "linear-gradient(135deg, #4A90D9, #2C5F8A)",
                 borderRadius: "16px",

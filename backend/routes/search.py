@@ -92,36 +92,58 @@ def search_messages(
 
     results: List[SearchResult] = []
 
-    for session in sessions:
-        if q and q.strip():
-            # Req 7.1, 7.2: Case-insensitive ILIKE search across message text
-            matching_msg = (
-                db.query(ChatMessage)
-                .filter(
-                    ChatMessage.session_id == session.id,
-                    ChatMessage.text.ilike(f"%{q}%"),
-                )
-                .order_by(ChatMessage.created_at.asc())
-                .first()
+    if q and q.strip():
+        # Req 7.1, 7.2: Fetch the earliest matching message per session in ONE query,
+        # avoiding the N+1 pattern (one query per session).
+        from sqlalchemy import func
+        from sqlalchemy import select as sa_select
+
+        session_ids = [s.id for s in sessions]
+        if not session_ids:
+            return results
+
+        # Subquery: earliest matching message id per session
+        min_id_subq = (
+            sa_select(func.min(ChatMessage.id))
+            .where(
+                ChatMessage.session_id.in_(session_ids),
+                ChatMessage.text.ilike(f"%{q}%"),
             )
-            if not matching_msg:
-                # No matching message in this session — skip it
-                continue
+            .group_by(ChatMessage.session_id)
+            .scalar_subquery()
+        )
+        matching_msgs = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.id.in_(min_id_subq))
+            .all()
+        )
+        # Build a lookup: session_id -> first matching message
+        match_map = {msg.session_id: msg for msg in matching_msgs}
 
-            # Req 7.6: Build snippet with context around matched text
-            snippet = build_snippet(matching_msg.text, q)
-        else:
-            # No text query — include session but without a specific snippet
-            snippet = None
-
-        results.append(
+        for session in sessions:
+            msg = match_map.get(session.id)
+            if not msg:
+                continue  # no matching message in this session
+            results.append(
+                SearchResult(
+                    session_id=session.id,
+                    session_title=session.title,
+                    message_snippet=build_snippet(msg.text, q),
+                    created_at=session.created_at,
+                    tag=session.tag,
+                )
+            )
+    else:
+        # No text query — include all matching sessions without a snippet
+        results = [
             SearchResult(
                 session_id=session.id,
                 session_title=session.title,
-                message_snippet=snippet,
+                message_snippet=None,
                 created_at=session.created_at,
                 tag=session.tag,
             )
-        )
+            for session in sessions
+        ]
 
     return results

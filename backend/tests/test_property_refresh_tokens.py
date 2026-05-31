@@ -381,7 +381,7 @@ class TestProperty41RefreshTokenValidationAndExchange:
 
         for token in tokens:
             user = _patched_validate(token, pbt_db)
-            new_access_token = create_access_token({"email": user.email})
+            new_access_token = create_access_token(user.id)
             assert isinstance(new_access_token, str) and len(new_access_token) > 0, (
                 "A new access token must be issued after successful refresh token validation"
             )

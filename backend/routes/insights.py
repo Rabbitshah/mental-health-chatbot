@@ -29,7 +29,7 @@ def calculate_streaks(moods: list[MoodEntry]) -> tuple[int, int]:
     longest_streak = 1
     current_streak = 0
 
-    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    today = datetime.now(timezone.utc).date()
     if unique_dates and (unique_dates[0] == today or unique_dates[0] == today - timedelta(days=1)):
         current_streak = 1
         for i in range(len(unique_dates) - 1):
@@ -111,7 +111,7 @@ def get_mood_trend(days: int = Query(default=7, ge=1, le=365), db: Session = Dep
     except Exception as e:
         logger.warning(f"Cache GET failed for mood analytics (user {current_user.id}, days={days}): {e}")
 
-    cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     entries = db.query(MoodEntry).filter(
         MoodEntry.user_id == current_user.id,
         MoodEntry.date >= cutoff_date
@@ -133,7 +133,7 @@ def get_mood_trend(days: int = Query(default=7, ge=1, le=365), db: Session = Dep
     except Exception as e:
         logger.warning(f"Cache SET failed for mood analytics (user {current_user.id}, days={days}): {e}")
 
-    return entries
+    return result
 
 @router.delete("/mood/{mood_id}")
 def delete_mood_entry(
@@ -178,6 +178,8 @@ def get_dashboard_stats(db: Session = Depends(get_db), current_user: User = Depe
         "day_streak": streak
     }
 
+_ANALYTICS_MAX_DAYS = 730  # 2-year cap — prevents full-table scans
+
 @router.get("/analytics")
 def get_mood_analytics(
     start_date: Optional[datetime] = None,
@@ -185,11 +187,15 @@ def get_mood_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(timezone.utc)
     if start_date is None:
         start_date = now - timedelta(days=30)
     if end_date is None:
         end_date = now
+
+    # Cap date range to prevent full-table scans
+    if (end_date - start_date).days > _ANALYTICS_MAX_DAYS:
+        start_date = end_date - timedelta(days=_ANALYTICS_MAX_DAYS)
 
     cache_key = f"user:{current_user.id}:mood:analytics:{start_date.isoformat()}:{end_date.isoformat()}"
     try:
@@ -213,7 +219,7 @@ def get_mood_analytics(
             "min_mood": 0.0,
             "max_mood": 0.0,
             "min_energy": 0.0,
-            "max_mood": 0.0, # This was likely a typo in original but keeping for now or fixing if obvious
+            "max_energy": 0.0,
             "min_stress": 0.0,
             "max_stress": 0.0,
             "trend": "stable",
@@ -624,7 +630,7 @@ def get_patterns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cutoff_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     moods = db.query(MoodEntry).filter(
         MoodEntry.user_id == current_user.id,
         MoodEntry.date >= cutoff_date,

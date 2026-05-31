@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import {
   MessageCircle,
   Settings as SettingsIcon,
@@ -20,6 +21,7 @@ import MoodCheckInModal from "../components/MoodCheckInModal";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [userName, setUserName] = useState("Alex");
   const [conversations, setConversations] = useState([]);
   const [latestConversation, setLatestConversation] = useState(null);
@@ -116,17 +118,9 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        const user = JSON.parse(userStr);
-        if (user?.name) setUserName(user.name.split(" ")[0]);
-      } catch (error) {
-        console.error("Failed to parse user data", error);
-      }
-    }
+    if (authUser?.name) setUserName(authUser.name.split(" ")[0]);
     fetchDashboardData({ showLoading: true });
-  }, []);
+  }, [authUser]);
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -93,11 +93,14 @@ class TestAccessToken:
     """Tests for access token functionality."""
 
     def test_create_access_token(self):
-        """Access tokens are created as non-empty strings."""
-        token = create_access_token({"email": "test@example.com"})
+        """Access tokens are created as non-empty strings with a 'sub' claim."""
+        token = create_access_token(42)
         assert token is not None
         assert isinstance(token, str)
         assert len(token) > 0
+        from jwt_handler import decode_token
+        payload = decode_token(token)
+        assert payload.get("sub") == "42"
 
     def test_access_token_expiry_is_15_minutes(self):
         """Access token expiry constant is 15 minutes."""

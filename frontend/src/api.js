@@ -28,6 +28,7 @@ API.interceptors.response.use(
       status === 401 &&
       originalRequest &&
       !originalRequest._retry &&
+      !originalRequest._skipAuthRefresh &&
       !originalRequest.url?.includes("/login") &&
       !originalRequest.url?.includes("/signup") &&
       !originalRequest.url?.includes("/auth/refresh")
